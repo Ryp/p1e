@@ -5,9 +5,13 @@ const PSXState = @import("../state.zig").PSXState;
 const g0 = @import("instructions_g0.zig");
 const g1 = @import("instructions_g1.zig");
 
+const config = @import("../config.zig");
+
 // FIXME be very careful with endianness here
 pub fn store_gp0_u32(psx: *PSXState, value: u32) void {
-    std.debug.print("GP0 write: 0x{x:0>8}\n", .{value});
+    if (config.enable_gpu_debug) {
+        std.debug.print("GP0 write: 0x{x:0>8}\n", .{value});
+    }
 
     if (psx.gpu.gp0_pending_command == null and psx.gpu.gp0_copy_mode == null) {
         const op_code: g0.OpCode = @enumFromInt(value >> 24);
@@ -19,7 +23,9 @@ pub fn store_gp0_u32(psx: *PSXState, value: u32) void {
             .command_size_bytes = command_size_bytes,
         };
 
-        std.debug.print("New GP0 command: op = {}, bytes = {}\n", .{ op_code, command_size_bytes });
+        if (config.enable_gpu_debug) {
+            std.debug.print("New GP0 command: op = {}, bytes = {}\n", .{ op_code, command_size_bytes });
+        }
     }
 
     if (psx.gpu.gp0_copy_mode) |*copy_mode| {
@@ -188,7 +194,9 @@ fn execute_gp0_command(psx: *PSXState, op_code: g0.OpCode, command_bytes: []u8) 
 }
 
 pub fn execute_gp1_command(psx: *PSXState, command_raw: g1.CommandRaw) void {
-    std.debug.print("GP1 COMMAND value: 0x{x:0>8}\n", .{@as(u32, @bitCast(command_raw))});
+    if (config.enable_gpu_debug) {
+        std.debug.print("GP1 COMMAND value: 0x{x:0>8}\n", .{@as(u32, @bitCast(command_raw))});
+    }
 
     switch (g1.make_command(command_raw)) {
         .SoftReset => |soft_reset| {
