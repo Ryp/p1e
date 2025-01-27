@@ -41,7 +41,7 @@ pub fn step(psx: *PSXState) void {
 
     execute_instruction(psx, instruction);
 
-    std.mem.copyForwards(u32, &psx.cpu.regs.r_in, &psx.cpu.regs.r_out);
+    @memcpy(&psx.cpu.regs.r_in, &psx.cpu.regs.r_out);
 }
 
 fn execute_instruction(psx: *PSXState, instruction: instructions.Instruction) void {
