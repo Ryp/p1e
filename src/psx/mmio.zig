@@ -98,14 +98,14 @@ fn load_generic(comptime T: type, psx: *PSXState, address: PSXAddress) T {
                             if (T == u32) {
                                 return gpu.load_mmio_u32(psx, offset);
                             } else {
-                                unreachable;
+                                @panic("Invalid type for GPU MMIO read");
                             }
                         },
                         else => {
                             const type_slice = get_mutable_mmio_slice_generic(T, psx, offset);
                             const value = std.mem.readInt(T, type_slice, .little);
                             std.debug.print("address {x} = {}\n", .{ offset, value });
-                            unreachable;
+                            @panic("NOT IMPLEMENTED");
                         },
                     }
                 },
