@@ -45,6 +45,7 @@ const Device = vk.DeviceProxy(apis);
 
 pub const GraphicsContext = struct {
     pub const CommandBuffer = vk.CommandBufferProxy(apis);
+    pub const StagingBufferSizeBytes = 1024 * 1024 * 8;
 
     allocator: Allocator,
 
@@ -58,6 +59,8 @@ pub const GraphicsContext = struct {
     frame_fence: vk.Fence,
     image_acquired: vk.Semaphore,
     render_finished: vk.Semaphore,
+    staging_memory: vk.DeviceMemory,
+    staging_buffer: vk.Buffer,
 
     debug_utils_messenger: vk.DebugUtilsMessengerEXT,
 
@@ -168,10 +171,27 @@ pub const GraphicsContext = struct {
 
         try self.dev.setDebugUtilsObjectNameEXT(&.{ .object_type = .semaphore, .object_handle = @intFromEnum(self.render_finished), .p_object_name = "Rendering finished" });
 
+        self.staging_buffer = try self.dev.createBuffer(&.{
+            .size = StagingBufferSizeBytes,
+            .usage = .{ .transfer_src_bit = true },
+            .sharing_mode = .exclusive,
+        }, null);
+        errdefer self.dev.destroyBuffer(self.staging_buffer, null);
+
+        const mem_reqs = self.dev.getBufferMemoryRequirements(self.staging_buffer);
+
+        self.staging_memory = try self.allocate(mem_reqs, .{ .host_visible_bit = true, .host_coherent_bit = true });
+        errdefer self.dev.freeMemory(self.staging_memory, null);
+
+        try self.dev.bindBufferMemory(self.staging_buffer, self.staging_memory, 0);
+
         return self;
     }
 
     pub fn deinit(self: GraphicsContext) void {
+        self.dev.destroyBuffer(self.staging_buffer, null);
+        self.dev.freeMemory(self.staging_memory, null);
+
         self.dev.destroyFence(self.frame_fence, null);
         self.dev.destroySemaphore(self.image_acquired, null);
         self.dev.destroySemaphore(self.render_finished, null);

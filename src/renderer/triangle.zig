@@ -158,6 +158,20 @@ pub fn main() !void {
     }, @ptrCast(&cmdbuf));
     defer gc.dev.freeCommandBuffers(pool, 1, @ptrCast(&cmdbuf));
 
+    const storage_buffer = try gc.dev.createBuffer(&.{
+        .size = GraphicsContext.StagingBufferSizeBytes,
+        .usage = .{ .transfer_dst_bit = true, .storage_buffer_bit = true },
+        .sharing_mode = .exclusive,
+    }, null);
+    defer gc.dev.destroyBuffer(storage_buffer, null);
+
+    const mem_reqs = gc.dev.getBufferMemoryRequirements(storage_buffer);
+
+    const storage_buffer_memory = try gc.allocate(mem_reqs, .{ .device_local_bit = true });
+    defer gc.dev.freeMemory(storage_buffer_memory, null);
+
+    try gc.dev.bindBufferMemory(storage_buffer, storage_buffer_memory, 0);
+
     var w: c_int = undefined;
     var h: c_int = undefined;
     c.glfwGetFramebufferSize(window, &w, &h);
@@ -231,60 +245,23 @@ pub fn main() !void {
     try gc.dev.deviceWaitIdle();
 }
 
-// fn uploadVertices(gc: *const GraphicsContext, pool: vk.CommandPool, buffer: vk.Buffer) !void {
-//     const staging_buffer = try gc.dev.createBuffer(&.{
-//         .size = @sizeOf(@TypeOf(vertices)),
-//         .usage = .{ .transfer_src_bit = true },
-//         .sharing_mode = .exclusive,
-//     }, null);
-//     defer gc.dev.destroyBuffer(staging_buffer, null);
-//     const mem_reqs = gc.dev.getBufferMemoryRequirements(staging_buffer);
-//     const staging_memory = try gc.allocate(mem_reqs, .{ .host_visible_bit = true, .host_coherent_bit = true });
-//     defer gc.dev.freeMemory(staging_memory, null);
-//     try gc.dev.bindBufferMemory(staging_buffer, staging_memory, 0);
-//
-//     {
-//         const data = try gc.dev.mapMemory(staging_memory, 0, vk.WHOLE_SIZE, .{});
-//         defer gc.dev.unmapMemory(staging_memory);
-//
-//         const gpu_vertices: [*]Vertex = @ptrCast(@alignCast(data));
-//         @memcpy(gpu_vertices, vertices[0..]);
-//     }
-//
-//     try copyBuffer(gc, pool, buffer, staging_buffer, @sizeOf(@TypeOf(vertices)));
-// }
+fn cmd_upload_vertices(gc: *const GraphicsContext, buffer: vk.Buffer) !void {
+    {
+        const data = try gc.dev.mapMemory(gc.staging_memory, 0, vk.WHOLE_SIZE, .{});
+        defer gc.dev.unmapMemory(gc.staging_memory);
 
-fn copyBuffer(gc: *const GraphicsContext, pool: vk.CommandPool, dst: vk.Buffer, src: vk.Buffer, size: vk.DeviceSize) !void {
-    var cmdbuf_handle: vk.CommandBuffer = undefined;
-    try gc.dev.allocateCommandBuffers(&.{
-        .command_pool = pool,
-        .level = .primary,
-        .command_buffer_count = 1,
-    }, @ptrCast(&cmdbuf_handle));
-    defer gc.dev.freeCommandBuffers(pool, 1, @ptrCast(&cmdbuf_handle));
-
-    const cmdbuf = GraphicsContext.CommandBuffer.init(cmdbuf_handle, gc.dev.wrapper);
-
-    try cmdbuf.beginCommandBuffer(&.{
-        .flags = .{ .one_time_submit_bit = true },
-    });
+        _ = data;
+        // const gpu_vertices: [*]Vertex = @ptrCast(@alignCast(data));
+        // @memcpy(gpu_vertices, vertices[0..]);
+    }
 
     const region = vk.BufferCopy{
         .src_offset = 0,
         .dst_offset = 0,
-        .size = size,
+        .size = 100,
     };
-    cmdbuf.copyBuffer(src, dst, 1, @ptrCast(&region));
 
-    try cmdbuf.endCommandBuffer();
-
-    const si = vk.SubmitInfo{
-        .command_buffer_count = 1,
-        .p_command_buffers = (&cmdbuf.handle)[0..1],
-        .p_wait_dst_stage_mask = undefined,
-    };
-    try gc.dev.queueSubmit(gc.graphics_queue.handle, 1, @ptrCast(&si), .null_handle);
-    try gc.dev.queueWaitIdle(gc.graphics_queue.handle);
+    try gc.dev.cmdbuf.copyBuffer(buffer, gc.staging_buffer, 1, @ptrCast(&region));
 }
 
 fn record_command_buffer(
