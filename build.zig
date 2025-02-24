@@ -44,15 +44,10 @@ pub fn build(b: *std.Build) void {
             .root_source_file = vk_generate_cmd.addOutputFileArg("vk.zig"),
         });
 
-        const vert_cmd = b.addSystemCommand(&.{ "glslc", "--target-env=vulkan1.3", "-fshader-stage=vert", "-o" });
-        const vert_spv = vert_cmd.addOutputFileArg("vert.spv");
-        vert_cmd.addFileArg(b.path("./src/renderer/shaders/triangle.vert.hlsl")); // FIXME
-        exe.root_module.addAnonymousImport("vertex_shader", .{ .root_source_file = vert_spv });
-
-        const frag_cmd = b.addSystemCommand(&.{ "glslc", "--target-env=vulkan1.3", "-fshader-stage=frag", "-o" });
-        const frag_spv = frag_cmd.addOutputFileArg("frag.spv");
-        frag_cmd.addFileArg(b.path("./src/renderer/shaders/triangle.frag.hlsl")); // FIXME
-        exe.root_module.addAnonymousImport("fragment_shader", .{ .root_source_file = frag_spv });
+        compile_and_embed_hlsl_shader(b, exe.root_module, "./src/renderer/shaders/triangle.vert.hlsl", .Vertex, "triangle_vs") catch unreachable;
+        compile_and_embed_hlsl_shader(b, exe.root_module, "./src/renderer/shaders/triangle.frag.hlsl", .Fragment, "triangle_fs") catch unreachable;
+        compile_and_embed_hlsl_shader(b, exe.root_module, "./src/renderer/shaders/poly.vert.hlsl", .Vertex, "poly_vs") catch unreachable;
+        compile_and_embed_hlsl_shader(b, exe.root_module, "./src/renderer/shaders/poly.frag.hlsl", .Fragment, "poly_fs") catch unreachable;
     }
 
     if (enable_tracy) {
@@ -96,4 +91,25 @@ pub fn build(b: *std.Build) void {
 
     const test_step = b.step("test", "Run tests");
     test_step.dependOn(&test_cmd.step);
+}
+
+const ShaderStage = enum {
+    Vertex,
+    Fragment,
+};
+
+fn compile_and_embed_hlsl_shader(b: *std.Build, module: *std.Build.Module, hlsl_path: [:0]const u8, shader_stage: ShaderStage, import_name: [:0]const u8) !void {
+    const stage_string = switch (shader_stage) {
+        ShaderStage.Vertex => "-fshader-stage=vert",
+        ShaderStage.Fragment => "-fshader-stage=frag",
+    };
+
+    const cmd = b.addSystemCommand(&.{ "glslc", "--target-env=vulkan1.4", stage_string, "-o" });
+
+    const spv_path = try std.mem.concatWithSentinel(b.allocator, u8, &[_][]const u8{ hlsl_path, ".spv" }, 0);
+    defer b.allocator.free(spv_path);
+
+    const vert_spv = cmd.addOutputFileArg(spv_path);
+    cmd.addFileArg(b.path(hlsl_path));
+    module.addAnonymousImport(import_name, .{ .root_source_file = vert_spv });
 }

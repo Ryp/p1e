@@ -5,10 +5,8 @@ const GraphicsContext = @import("graphics_context.zig").GraphicsContext;
 const Swapchain = @import("swapchain.zig").Swapchain;
 const Allocator = std.mem.Allocator;
 
-const vert_spv align(@alignOf(u32)) = @embedFile("vertex_shader").*;
-const frag_spv align(@alignOf(u32)) = @embedFile("fragment_shader").*;
-
-const app_name = "vulkan-zig triangle example";
+const triangle_vert_spv align(@alignOf(u32)) = @embedFile("poly_vs").*;
+const triangle_frag_spv align(@alignOf(u32)) = @embedFile("poly_fs").*;
 
 const GPUTextureAccess = struct {
     stage_mask: vk.PipelineStageFlags2,
@@ -97,7 +95,20 @@ fn get_vk_image_barrier_depency_info(barriers: []const vk.ImageMemoryBarrier2) v
     };
 }
 
-pub fn main() !void {
+const Renderer = struct {
+    dev: vk.Device,
+    allocator: *Allocator,
+};
+
+const psx_state = @import("../psx/state.zig");
+const cpu_execution = @import("../psx/cpu/execution.zig");
+const gpu_execution = @import("../psx/gpu/execution.zig");
+
+pub fn main(psx: *psx_state.PSXState, allocator: std.mem.Allocator) !void {
+    // var renderer = try create_renderer(allocator, "PSX Emulator");
+    // defer destroy_renderer(&renderer, allocator);
+    const app_name = "PSX Emulator";
+
     if (c.glfwInit() != c.GLFW_TRUE) return error.GlfwInitFailed;
     defer c.glfwTerminate();
 
@@ -118,10 +129,6 @@ pub fn main() !void {
     ) orelse return error.WindowInitFailed;
     defer c.glfwDestroyWindow(window);
 
-    var gpa = std.heap.GeneralPurposeAllocator(.{}){};
-    defer _ = gpa.deinit();
-    const allocator = gpa.allocator();
-
     const gc = try GraphicsContext.init(allocator, app_name, window);
     defer gc.deinit();
 
@@ -130,10 +137,22 @@ pub fn main() !void {
     var swapchain = try Swapchain.init(&gc, allocator, extent);
     defer swapchain.deinit();
 
+    const desc_set_layout = try gc.dev.createDescriptorSetLayout(&.{
+        .binding_count = 1,
+        .p_bindings = &[_]vk.DescriptorSetLayoutBinding{.{
+            .binding = 0,
+            .descriptor_type = .storage_buffer,
+            .descriptor_count = 1,
+            .stage_flags = .{ .vertex_bit = true },
+            .p_immutable_samplers = null,
+        }},
+    }, null);
+    defer gc.dev.destroyDescriptorSetLayout(desc_set_layout, null);
+
     const pipeline_layout = try gc.dev.createPipelineLayout(&.{
         .flags = .{},
-        .set_layout_count = 0,
-        .p_set_layouts = undefined,
+        .set_layout_count = 1,
+        .p_set_layouts = @ptrCast(&desc_set_layout),
         .push_constant_range_count = 0,
         .p_push_constant_ranges = undefined,
     }, null);
@@ -141,6 +160,18 @@ pub fn main() !void {
 
     const pipeline = try createPipeline(&gc, pipeline_layout, swapchain);
     defer gc.dev.destroyPipeline(pipeline, null);
+
+    // Create descriptor pool
+    const desc_pool = try gc.dev.createDescriptorPool(&.{
+        .flags = .{},
+        .max_sets = 1,
+        .pool_size_count = 1,
+        .p_pool_sizes = &[_]vk.DescriptorPoolSize{.{
+            .type = .storage_buffer,
+            .descriptor_count = 1,
+        }},
+    }, null);
+    defer gc.dev.destroyDescriptorPool(desc_pool, null);
 
     // FIXME resettable flag?
     const pool = try gc.dev.createCommandPool(&.{
@@ -158,15 +189,66 @@ pub fn main() !void {
     }, @ptrCast(&cmdbuf));
     defer gc.dev.freeCommandBuffers(pool, 1, @ptrCast(&cmdbuf));
 
+    const storage_buffer = try gc.dev.createBuffer(&.{
+        .size = GraphicsContext.StagingBufferSizeBytes,
+        .usage = .{ .transfer_dst_bit = true, .storage_buffer_bit = true },
+        .sharing_mode = .exclusive,
+    }, null);
+    defer gc.dev.destroyBuffer(storage_buffer, null);
+
+    const mem_reqs = gc.dev.getBufferMemoryRequirements(storage_buffer);
+
+    const storage_buffer_memory = try gc.allocate(mem_reqs, .{
+        // .device_local_bit = true,
+        .host_coherent_bit = true,
+    });
+    defer gc.dev.freeMemory(storage_buffer_memory, null);
+
+    try gc.dev.bindBufferMemory(storage_buffer, storage_buffer_memory, 0);
+
+    // Create descirptor set
+    var desc_set: [1]vk.DescriptorSet = undefined;
+    try gc.dev.allocateDescriptorSets(&.{
+        .descriptor_pool = desc_pool,
+        .descriptor_set_count = 1,
+        .p_set_layouts = @ptrCast(&desc_set_layout),
+    }, @ptrCast(&desc_set));
+
+    // Update descriptor set
+    const desc_buffer_info = vk.DescriptorBufferInfo{
+        .buffer = storage_buffer,
+        .offset = 0,
+        .range = GraphicsContext.StagingBufferSizeBytes,
+    };
+
+    const desc_writes = [_]vk.WriteDescriptorSet{.{
+        .dst_set = desc_set[0],
+        .dst_binding = 0,
+        .dst_array_element = 0,
+        .descriptor_count = 1,
+        .descriptor_type = .storage_buffer,
+        .p_image_info = undefined,
+        .p_buffer_info = @ptrCast(&desc_buffer_info),
+        .p_texel_buffer_view = undefined,
+    }};
+
+    gc.dev.updateDescriptorSets(1, @ptrCast(&desc_writes), 0, null);
+
     var w: c_int = undefined;
     var h: c_int = undefined;
     c.glfwGetFramebufferSize(window, &w, &h);
 
     var should_recreate_swapchain = false;
 
+    psx.headless = false; // Hook backend
+
     while (c.glfwWindowShouldClose(window) == c.GLFW_FALSE) {
         c.glfwPollEvents();
         c.glfwGetFramebufferSize(window, &w, &h);
+
+        while (!psx.gpu.pending_draw) {
+            cpu_execution.step(psx);
+        }
 
         const fence_wait_result = try gc.dev.waitForFences(1, @ptrCast(&gc.frame_fence), vk.TRUE, std.math.maxInt(u64));
         std.debug.assert(fence_wait_result == .success);
@@ -192,12 +274,49 @@ pub fn main() !void {
 
         try gc.dev.resetCommandPool(pool, .{});
 
-        try record_command_buffer(
-            &gc,
-            cmdbuf,
-            &swapchain,
-            pipeline,
-        );
+        try gc.dev.beginCommandBuffer(cmdbuf, &.{});
+
+        var vertex_count: u32 = 0;
+
+        {
+            const data = try gc.dev.mapMemory(storage_buffer_memory, 0, vk.WHOLE_SIZE, .{});
+            defer gc.dev.unmapMemory(storage_buffer_memory);
+
+            const data_ptr: [*]f32 = @ptrCast(@alignCast(data));
+            var data_index: u32 = 0;
+
+            for (psx.gpu.draw_command_buffer[0..psx.gpu.draw_command_offset], 0..) |draw_command, command_index| {
+                std.debug.print("Command index = {}\n", .{command_index});
+                for (psx.gpu.index_buffer[draw_command.index_offset .. draw_command.index_offset + draw_command.index_count]) |index| {
+                    const phat_vertex = psx.gpu.vertex_buffer[index];
+                    data_ptr[data_index + 0] = phat_vertex.position[0] / 1024.0;
+                    data_ptr[data_index + 1] = phat_vertex.position[1] / 512.0;
+                    data_ptr[data_index + 2] = phat_vertex.color[0];
+                    data_ptr[data_index + 3] = phat_vertex.color[1];
+                    data_ptr[data_index + 4] = phat_vertex.color[2];
+                    data_index += 5;
+                }
+                vertex_count += draw_command.index_count;
+            }
+
+            // const gpu_vertices: [*]Vertex = @ptrCast(@alignCast(data));
+            // @memcpy(gpu_vertices, vertices[0..]);
+        }
+
+        // const region = vk.BufferCopy{
+        //     .src_offset = 0,
+        //     .dst_offset = 0,
+        //     .size = 100,
+        // };
+
+        // try cmdbuf.copyBuffer(storage_buffer, gc.staging_buffer, 1, @ptrCast(&region));
+
+        //  FIXME
+        gc.dev.cmdBindDescriptorSets(cmdbuf, .graphics, pipeline_layout, 0, 1, @ptrCast(&desc_set), 0, null);
+
+        try record_command_buffer(&gc, cmdbuf, &swapchain, pipeline, vertex_count);
+
+        try gc.dev.endCommandBuffer(cmdbuf);
 
         const wait_stage = [_]vk.PipelineStageFlags{.{ .bottom_of_pipe_bit = true }};
         try gc.dev.queueSubmit(gc.graphics_queue.handle, 1, &[_]vk.SubmitInfo{.{
@@ -223,6 +342,8 @@ pub fn main() !void {
         } else {
             std.debug.assert(present_result == .success);
         }
+
+        gpu_execution.consume_pending_draw(psx);
     }
 
     const result = try gc.dev.waitForFences(1, @ptrCast(&gc.frame_fence), vk.TRUE, std.math.maxInt(u64));
@@ -231,70 +352,13 @@ pub fn main() !void {
     try gc.dev.deviceWaitIdle();
 }
 
-// fn uploadVertices(gc: *const GraphicsContext, pool: vk.CommandPool, buffer: vk.Buffer) !void {
-//     const staging_buffer = try gc.dev.createBuffer(&.{
-//         .size = @sizeOf(@TypeOf(vertices)),
-//         .usage = .{ .transfer_src_bit = true },
-//         .sharing_mode = .exclusive,
-//     }, null);
-//     defer gc.dev.destroyBuffer(staging_buffer, null);
-//     const mem_reqs = gc.dev.getBufferMemoryRequirements(staging_buffer);
-//     const staging_memory = try gc.allocate(mem_reqs, .{ .host_visible_bit = true, .host_coherent_bit = true });
-//     defer gc.dev.freeMemory(staging_memory, null);
-//     try gc.dev.bindBufferMemory(staging_buffer, staging_memory, 0);
-//
-//     {
-//         const data = try gc.dev.mapMemory(staging_memory, 0, vk.WHOLE_SIZE, .{});
-//         defer gc.dev.unmapMemory(staging_memory);
-//
-//         const gpu_vertices: [*]Vertex = @ptrCast(@alignCast(data));
-//         @memcpy(gpu_vertices, vertices[0..]);
-//     }
-//
-//     try copyBuffer(gc, pool, buffer, staging_buffer, @sizeOf(@TypeOf(vertices)));
-// }
-
-fn copyBuffer(gc: *const GraphicsContext, pool: vk.CommandPool, dst: vk.Buffer, src: vk.Buffer, size: vk.DeviceSize) !void {
-    var cmdbuf_handle: vk.CommandBuffer = undefined;
-    try gc.dev.allocateCommandBuffers(&.{
-        .command_pool = pool,
-        .level = .primary,
-        .command_buffer_count = 1,
-    }, @ptrCast(&cmdbuf_handle));
-    defer gc.dev.freeCommandBuffers(pool, 1, @ptrCast(&cmdbuf_handle));
-
-    const cmdbuf = GraphicsContext.CommandBuffer.init(cmdbuf_handle, gc.dev.wrapper);
-
-    try cmdbuf.beginCommandBuffer(&.{
-        .flags = .{ .one_time_submit_bit = true },
-    });
-
-    const region = vk.BufferCopy{
-        .src_offset = 0,
-        .dst_offset = 0,
-        .size = size,
-    };
-    cmdbuf.copyBuffer(src, dst, 1, @ptrCast(&region));
-
-    try cmdbuf.endCommandBuffer();
-
-    const si = vk.SubmitInfo{
-        .command_buffer_count = 1,
-        .p_command_buffers = (&cmdbuf.handle)[0..1],
-        .p_wait_dst_stage_mask = undefined,
-    };
-    try gc.dev.queueSubmit(gc.graphics_queue.handle, 1, @ptrCast(&si), .null_handle);
-    try gc.dev.queueWaitIdle(gc.graphics_queue.handle);
-}
-
 fn record_command_buffer(
     gc: *const GraphicsContext,
     cmdbuf: vk.CommandBuffer,
     swapchain: *Swapchain,
     pipeline: vk.Pipeline,
+    vertex_count: u32,
 ) !void {
-    try gc.dev.beginCommandBuffer(cmdbuf, &.{});
-
     if (swapchain.needs_transition) {
         var image_barriers = try std.BoundedArray(vk.ImageMemoryBarrier2, 8).init(swapchain.swap_images.len);
 
@@ -376,7 +440,8 @@ fn record_command_buffer(
     gc.dev.cmdBeginRendering(cmdbuf, &rendering_info);
 
     gc.dev.cmdBindPipeline(cmdbuf, .graphics, pipeline);
-    gc.dev.cmdDraw(cmdbuf, 3, 1, 0, 0);
+
+    gc.dev.cmdDraw(cmdbuf, vertex_count, 1, 0, 0);
 
     gc.dev.cmdEndRendering(cmdbuf);
 
@@ -390,8 +455,6 @@ fn record_command_buffer(
 
         gc.dev.cmdPipelineBarrier2(cmdbuf, &dependencies);
     }
-
-    try gc.dev.endCommandBuffer(cmdbuf);
 }
 
 fn createPipeline(
@@ -400,14 +463,14 @@ fn createPipeline(
     swapchain: Swapchain,
 ) !vk.Pipeline {
     const vert = try gc.dev.createShaderModule(&.{
-        .code_size = vert_spv.len,
-        .p_code = @ptrCast(&vert_spv),
+        .code_size = triangle_vert_spv.len,
+        .p_code = @ptrCast(&triangle_vert_spv),
     }, null);
     defer gc.dev.destroyShaderModule(vert, null);
 
     const frag = try gc.dev.createShaderModule(&.{
-        .code_size = frag_spv.len,
-        .p_code = @ptrCast(&frag_spv),
+        .code_size = triangle_frag_spv.len,
+        .p_code = @ptrCast(&triangle_frag_spv),
     }, null);
     defer gc.dev.destroyShaderModule(frag, null);
 
@@ -447,7 +510,7 @@ fn createPipeline(
         .depth_clamp_enable = vk.FALSE,
         .rasterizer_discard_enable = vk.FALSE,
         .polygon_mode = .fill,
-        .cull_mode = .{ .back_bit = true },
+        .cull_mode = .{ .back_bit = false },
         .front_face = .clockwise,
         .depth_bias_enable = vk.FALSE,
         .depth_bias_constant_factor = 0,
