@@ -38,4 +38,9 @@ pub const GPUState = struct {
         index_x: usize,
         index_y: usize,
     } = null,
+
+    frame_index: u64 = 0,
+
+    vertex_offset: u32 = 0,
+    triangle_offset: u32 = 0,
 };
