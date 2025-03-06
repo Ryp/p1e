@@ -1,7 +1,7 @@
 name: Build
 on: [push, pull_request]
 env:
-  zig_version: 0.14.0 # FIXME uncomment usage and pin when version is stable
+  zig_version: 0.14.0
 
 jobs:
   build:
@@ -15,8 +15,8 @@ jobs:
           submodules: true
 
       - uses: goto-bus-stop/setup-zig@v2
-        # with:
-        #   version: ${{ env.zig_version }}
+        with:
+          version: ${{ env.zig_version }}
       # Ubuntu-specific bit
       - run: zig build
       - run: zig build test
@@ -26,6 +26,6 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: goto-bus-stop/setup-zig@v2
-        # with:
-        #   version: ${{ env.zig_version }}
-      - run: zig fmt --check src/*.zig
+        with:
+          version: ${{ env.zig_version }}
+      - run: zig fmt --check *.zig
