@@ -19,6 +19,7 @@ pub fn build(b: *std.Build) void {
     const enable_vulkan_backend = b.option(bool, "vulkan", "Enable Vulkan renderer support") orelse false;
     const enable_tracy = b.option(bool, "tracy", "Enable Tracy support") orelse false;
     const tracy_callstack = b.option(bool, "tracy-callstack", "Include callstack information with Tracy data. Does nothing if -Dtracy is not provided") orelse false;
+    const no_bin = b.option(bool, "no-bin", "skip emitting binary") orelse false;
 
     const exe_options = b.addOptions();
     exe_options.addOption(bool, "enable_vulkan_backend", enable_vulkan_backend);
@@ -66,7 +67,11 @@ pub fn build(b: *std.Build) void {
         exe.linkLibC();
     }
 
-    b.installArtifact(exe);
+    if (no_bin) {
+        b.getInstallStep().dependOn(&exe.step);
+    } else {
+        b.installArtifact(exe);
+    }
 
     const run_cmd = b.addRunArtifact(exe);
     run_cmd.step.dependOn(b.getInstallStep());
