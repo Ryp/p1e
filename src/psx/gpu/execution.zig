@@ -1,6 +1,11 @@
 const std = @import("std");
 
 const PSXState = @import("../state.zig").PSXState;
+const state = @import("state.zig");
+const f32_2 = state.f32_2;
+const f32_3 = state.f32_3;
+const PhatVertex = state.PhatVertex;
+const DrawCommand = state.DrawCommand;
 
 const g0 = @import("instructions_g0.zig");
 const g1 = @import("instructions_g1.zig");
@@ -15,7 +20,7 @@ pub fn store_gp0_u32(psx: *PSXState, value: u32) void {
 
     if (psx.gpu.gp0_pending_command == null and psx.gpu.gp0_copy_mode == null) {
         const op_code: g0.OpCode = @bitCast(@as(u8, @intCast(value >> 24)));
-        const command_size_bytes = g0.get_command_size_bytes(op_code);
+        const command_size_bytes = g0.get_command_size_bytes(op_code); // This sucks
 
         psx.gpu.gp0_pending_command = .{
             .op_code = op_code,
@@ -64,33 +69,6 @@ pub fn store_gp0_u32(psx: *PSXState, value: u32) void {
     }
 }
 
-const f32_2 = @Vector(2, f32);
-const f32_3 = @Vector(3, f32);
-
-const PhatVertex = struct {
-    position: f32_3,
-    color: f32_3,
-};
-
-const PhatTriangle = struct {
-    index_v0: u32,
-    index_v1: u32,
-    index_v2: u32,
-    transparent: bool,
-};
-
-fn push_vertex(psx: *PSXState, vertex: PhatVertex) void {
-    _ = psx;
-    _ = vertex;
-}
-
-fn push_triangle(psx: *PSXState, triangle: PhatTriangle) void {
-    // FIXME
-    _ = triangle;
-
-    psx.gpu.triangle_offset += 1;
-}
-
 // FIXME normalization from viewport!
 // FIMXE Third channel isn't really needed, or at least not at that time.
 // FIXCME can we do float4(float2 , float2) in zig?
@@ -115,65 +93,78 @@ const PhatPackedVertex = struct {
     color: g0.PackedColor,
 };
 
-fn push_packed_triangle_color(psx: *PSXState, transparent: bool, v1: PhatPackedVertex, v2: PhatPackedVertex, v3: PhatPackedVertex) void {
-    push_vertex(psx, .{
+fn push_packed_triangle_color(psx: *PSXState, op_code: g0.OpCode, v1: PhatPackedVertex, v2: PhatPackedVertex, v3: PhatPackedVertex) void {
+    const vertices = [3]PhatVertex{ .{
         .position = packed_vertex_to_f32_3(v1.position),
         .color = packed_color_to_f32_3(v1.color),
-    });
-    push_vertex(psx, .{
+    }, .{
         .position = packed_vertex_to_f32_3(v2.position),
         .color = packed_color_to_f32_3(v2.color),
-    });
-    push_vertex(psx, .{
+    }, .{
         .position = packed_vertex_to_f32_3(v3.position),
         .color = packed_color_to_f32_3(v3.color),
-    });
+    } };
 
-    // std.debug.print("Triangle with color at v1: {d:.3}\n", .{packed_color_to_f32_3(v3.color)[0]});
+    const indices = [3]u32{
+        psx.gpu.vertex_offset + 0,
+        psx.gpu.vertex_offset + 1,
+        psx.gpu.vertex_offset + 2,
+    };
 
-    push_triangle(psx, .{
-        .index_v0 = psx.gpu.vertex_offset + 0,
-        .index_v1 = psx.gpu.vertex_offset + 1,
-        .index_v2 = psx.gpu.vertex_offset + 2,
-        .transparent = transparent,
-    });
+    psx.gpu.draw_command_buffer[psx.gpu.draw_command_offset] = .{
+        .op_code = op_code,
+        .index_offset = psx.gpu.index_offset,
+        .index_count = indices.len,
+    };
 
-    psx.gpu.vertex_offset += 3;
+    @memcpy(psx.gpu.vertex_buffer[psx.gpu.vertex_offset..][0..vertices.len], &vertices);
+
+    @memcpy(psx.gpu.index_buffer[psx.gpu.index_offset..][0..indices.len], &indices);
+
+    // Update counters at the end
+    psx.gpu.vertex_offset += vertices.len;
+    psx.gpu.index_offset += indices.len;
+    psx.gpu.draw_command_offset += 1;
 }
 
-fn push_packed_quad_color(psx: *PSXState, transparent: bool, v1: PhatPackedVertex, v2: PhatPackedVertex, v3: PhatPackedVertex, v4: PhatPackedVertex) void {
-    push_vertex(psx, .{
+fn push_packed_quad_color(psx: *PSXState, op_code: g0.OpCode, v1: PhatPackedVertex, v2: PhatPackedVertex, v3: PhatPackedVertex, v4: PhatPackedVertex) void {
+    const vertices = [4]PhatVertex{ .{
         .position = packed_vertex_to_f32_3(v1.position),
         .color = packed_color_to_f32_3(v1.color),
-    });
-    push_vertex(psx, .{
+    }, .{
         .position = packed_vertex_to_f32_3(v2.position),
         .color = packed_color_to_f32_3(v2.color),
-    });
-    push_vertex(psx, .{
+    }, .{
         .position = packed_vertex_to_f32_3(v3.position),
         .color = packed_color_to_f32_3(v3.color),
-    });
-    push_vertex(psx, .{
+    }, .{
         .position = packed_vertex_to_f32_3(v4.position),
         .color = packed_color_to_f32_3(v4.color),
-    });
+    } };
 
-    push_triangle(psx, .{
-        .index_v0 = psx.gpu.vertex_offset + 0,
-        .index_v1 = psx.gpu.vertex_offset + 1,
-        .index_v2 = psx.gpu.vertex_offset + 2,
-        .transparent = transparent,
-    });
+    const indices = [6]u32{
+        psx.gpu.vertex_offset + 0, // 1st triangle
+        psx.gpu.vertex_offset + 1,
+        psx.gpu.vertex_offset + 2,
+        psx.gpu.vertex_offset + 1, // 2nd triangle
+        psx.gpu.vertex_offset + 2,
+        psx.gpu.vertex_offset + 3,
+    };
 
-    push_triangle(psx, .{
-        .index_v0 = psx.gpu.vertex_offset + 1,
-        .index_v1 = psx.gpu.vertex_offset + 2,
-        .index_v2 = psx.gpu.vertex_offset + 3,
-        .transparent = transparent,
-    });
+    psx.gpu.draw_command_buffer[psx.gpu.draw_command_offset] = .{
+        .op_code = op_code,
+        .index_offset = psx.gpu.index_offset,
+        .index_count = indices.len,
+    };
 
-    psx.gpu.vertex_offset += 4;
+    @memcpy(psx.gpu.vertex_buffer[psx.gpu.vertex_offset..][0..vertices.len], &vertices);
+
+    @memcpy(psx.gpu.index_buffer[psx.gpu.index_offset..][0..indices.len], &indices);
+
+    // Update counters at the end
+    psx.gpu.vertex_offset += vertices.len;
+    psx.gpu.index_offset += indices.len;
+    psx.gpu.draw_command_offset += 1;
 }
 
 fn execute_gp0_command(psx: *PSXState, op_code: g0.OpCode, command_bytes: []u8) void {
@@ -202,6 +193,8 @@ fn execute_gp0_command(psx: *PSXState, op_code: g0.OpCode, command_bytes: []u8) 
             }
         },
         .DrawPoly => {
+            std.debug.assert(!psx.gpu.pending_draw);
+
             const draw_poly = op_code.secondary.draw_poly;
             if (draw_poly.is_shaded) {
                 if (draw_poly.is_textured) {
@@ -209,7 +202,7 @@ fn execute_gp0_command(psx: *PSXState, op_code: g0.OpCode, command_bytes: []u8) 
                         // FIXME!!!!!!
                         const quad_shaded_textured = std.mem.bytesAsValue(g0.DrawQuadShadedTextured, command_bytes);
 
-                        push_packed_quad_color(psx, draw_poly.is_semi_transparent, .{
+                        push_packed_quad_color(psx, op_code, .{
                             .position = quad_shaded_textured.v1_pos,
                             .color = quad_shaded_textured.v1_color,
                         }, .{
@@ -226,7 +219,7 @@ fn execute_gp0_command(psx: *PSXState, op_code: g0.OpCode, command_bytes: []u8) 
                         // FIXME!!!!!!
                         const tri_shaded_textured = std.mem.bytesAsValue(g0.DrawTriangleShadedTextured, command_bytes);
 
-                        push_packed_triangle_color(psx, draw_poly.is_semi_transparent, .{
+                        push_packed_triangle_color(psx, op_code, .{
                             .position = tri_shaded_textured.v1_pos,
                             .color = tri_shaded_textured.v1_color,
                         }, .{
@@ -241,7 +234,7 @@ fn execute_gp0_command(psx: *PSXState, op_code: g0.OpCode, command_bytes: []u8) 
                     if (draw_poly.is_quad) {
                         const quad_shaded = std.mem.bytesAsValue(g0.DrawQuadShaded, command_bytes);
 
-                        push_packed_quad_color(psx, draw_poly.is_semi_transparent, .{
+                        push_packed_quad_color(psx, op_code, .{
                             .position = quad_shaded.v1_pos,
                             .color = quad_shaded.v1_color,
                         }, .{
@@ -257,7 +250,7 @@ fn execute_gp0_command(psx: *PSXState, op_code: g0.OpCode, command_bytes: []u8) 
                     } else {
                         const triangle_shaded = std.mem.bytesAsValue(g0.DrawTriangleShaded, command_bytes);
 
-                        push_packed_triangle_color(psx, draw_poly.is_semi_transparent, .{
+                        push_packed_triangle_color(psx, op_code, .{
                             .position = triangle_shaded.v1_pos,
                             .color = triangle_shaded.v1_color,
                         }, .{
@@ -275,7 +268,7 @@ fn execute_gp0_command(psx: *PSXState, op_code: g0.OpCode, command_bytes: []u8) 
                         // FIXMEEEEEEEEEEE
                         const quad_textured = std.mem.bytesAsValue(g0.DrawQuadTextured, command_bytes);
 
-                        push_packed_quad_color(psx, draw_poly.is_semi_transparent, .{
+                        push_packed_quad_color(psx, op_code, .{
                             .position = quad_textured.v1_pos,
                             .color = quad_textured.color,
                         }, .{
@@ -292,7 +285,7 @@ fn execute_gp0_command(psx: *PSXState, op_code: g0.OpCode, command_bytes: []u8) 
                         // FIXMEEEEEEEEEEE
                         const triangle_textured = std.mem.bytesAsValue(g0.DrawTriangleTextured, command_bytes);
 
-                        push_packed_triangle_color(psx, draw_poly.is_semi_transparent, .{
+                        push_packed_triangle_color(psx, op_code, .{
                             .position = triangle_textured.v1_pos,
                             .color = triangle_textured.color,
                         }, .{
@@ -307,7 +300,7 @@ fn execute_gp0_command(psx: *PSXState, op_code: g0.OpCode, command_bytes: []u8) 
                     if (draw_poly.is_quad) {
                         const quad_monochrome = std.mem.bytesAsValue(g0.DrawQuadMonochrome, command_bytes);
 
-                        push_packed_quad_color(psx, draw_poly.is_semi_transparent, .{
+                        push_packed_quad_color(psx, op_code, .{
                             .position = quad_monochrome.v1_pos,
                             .color = quad_monochrome.color,
                         }, .{
@@ -323,7 +316,7 @@ fn execute_gp0_command(psx: *PSXState, op_code: g0.OpCode, command_bytes: []u8) 
                     } else {
                         const triangle_monochrome = std.mem.bytesAsValue(g0.DrawTriangleMonochrome, command_bytes);
 
-                        push_packed_triangle_color(psx, draw_poly.is_semi_transparent, .{
+                        push_packed_triangle_color(psx, op_code, .{
                             .position = triangle_monochrome.v1_pos,
                             .color = triangle_monochrome.color,
                         }, .{
@@ -338,9 +331,11 @@ fn execute_gp0_command(psx: *PSXState, op_code: g0.OpCode, command_bytes: []u8) 
             }
         },
         .DrawLine => {
+            std.debug.assert(!psx.gpu.pending_draw);
             unreachable;
         },
         .DrawRect => {
+            std.debug.assert(!psx.gpu.pending_draw);
             unreachable;
         },
         .CopyRectangleVRAMtoVRAM => {
@@ -417,12 +412,12 @@ fn execute_gp0_command(psx: *PSXState, op_code: g0.OpCode, command_bytes: []u8) 
 
                     std.debug.assert(drawing_offset.zero_b22_23 == 0);
 
-                    std.debug.print("Frame {} end: vertex = {}, triangles = {}\n", .{ psx.gpu.frame_index, psx.gpu.vertex_offset, psx.gpu.triangle_offset });
+                    std.debug.print("Frame {} end: vertex = {}, draw commands = {}\n", .{ psx.gpu.frame_index, psx.gpu.vertex_offset, psx.gpu.draw_command_offset });
 
                     // FIXME reset frame data!
-                    psx.gpu.frame_index += 1;
-                    psx.gpu.vertex_offset = 0;
-                    psx.gpu.triangle_offset = 0;
+                    if (!psx.headless) {
+                        psx.gpu.pending_draw = true;
+                    }
                 },
                 .SetMaskBitSetting => {
                     const mask_bit_setting = std.mem.bytesAsValue(g0.SetMaskBitSetting, command_bytes);
@@ -500,8 +495,22 @@ pub fn execute_gp1_command(psx: *PSXState, command_raw: g1.CommandRaw) void {
     }
 }
 
+// FIXME public API
+pub fn consume_pending_draw(psx: *PSXState) void {
+    std.debug.assert(!psx.headless);
+
+    psx.gpu.pending_draw = false;
+
+    psx.gpu.frame_index += 1;
+    reset_frame_data(psx);
+}
+
 fn execute_reset(psx: *PSXState) void {
-    psx.gpu = .{};
+    psx.gpu = .{
+        .vertex_buffer = psx.gpu.vertex_buffer,
+        .index_buffer = psx.gpu.index_buffer,
+        .draw_command_buffer = psx.gpu.draw_command_buffer,
+    };
     psx.mmio.gpu.GPUSTAT = .{};
 
     execute_reset_command_buffer(psx);
@@ -512,4 +521,13 @@ fn execute_reset_command_buffer(psx: *PSXState) void {
     psx.gpu.gp0_pending_command = null;
     psx.gpu.gp0_copy_mode = null;
     // FIXME clear command FIFO
+
+    reset_frame_data(psx);
+}
+
+// Internal draw command buffer reset
+fn reset_frame_data(psx: *PSXState) void {
+    psx.gpu.vertex_offset = 0;
+    psx.gpu.index_offset = 0;
+    psx.gpu.draw_command_offset = 0;
 }

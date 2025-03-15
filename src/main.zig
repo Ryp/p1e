@@ -2,10 +2,8 @@ const std = @import("std");
 const assert = std.debug.assert;
 const Md5 = std.crypto.hash.Md5;
 
-const build_options = @import("build_options");
-
 const psx_state = @import("psx/state.zig");
-const cpu_execution = @import("psx/cpu/execution.zig");
+const loop = @import("renderer/loop.zig");
 
 pub fn main() !void {
     var gpa = std.heap.GeneralPurposeAllocator(.{}){};
@@ -33,14 +31,7 @@ pub fn main() !void {
     var psx = try psx_state.create_state(embedded_bios, allocator);
     defer psx_state.destroy_state(&psx, allocator);
 
-    if (build_options.enable_vulkan_backend) {
-        const tri_main = @import("renderer/triangle.zig");
-        try tri_main.main();
-    }
-
-    while (true) {
-        cpu_execution.step(&psx);
-    }
+    try loop.run(&psx, allocator);
 }
 
 const md5_scalar = u128;

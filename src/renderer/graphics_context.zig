@@ -173,7 +173,7 @@ pub const GraphicsContext = struct {
 
         self.staging_buffer = try self.dev.createBuffer(&.{
             .size = StagingBufferSizeBytes,
-            .usage = .{ .transfer_src_bit = true },
+            .usage = .{ .transfer_src_bit = true, .storage_buffer_bit = true },
             .sharing_mode = .exclusive,
         }, null);
         errdefer self.dev.destroyBuffer(self.staging_buffer, null);
@@ -428,6 +428,7 @@ fn print_debug_message(callback_data: *const vk.DebugUtilsMessengerCallbackDataE
 
 fn debug_message_callback(severity: vk.DebugUtilsMessageSeverityFlagsEXT, _: vk.DebugUtilsMessageTypeFlagsEXT, callback_data: *const vk.DebugUtilsMessengerCallbackDataEXT, _: *anyopaque) callconv(.C) vk.Bool32 {
     const ID_LoaderMessage: i32 = 0x0000000;
+    const ID_RDOC: i32 = 0x0000001;
     const ID_UNASSIGNED_BestPractices_vkCreateDevice_specialuse_extension_glemulation: i32 =
         -0x703c3ecb; // CreateDevice(): Attempting to enable extension VK_EXT_primitive_topology_list_restart, but
     // this extension is intended to support OpenGL and/or OpenGL ES emulation layers, and
@@ -484,6 +485,7 @@ fn debug_message_callback(severity: vk.DebugUtilsMessageSeverityFlagsEXT, _: vk.
         ID_UNASSIGNED_BestPractices_CreatePipelineLayout_SeparateSampler,
         ID_UNASSIGNED_BestPractices_Zcull_LessGreaterRatio,
         ID_UNASSIGNED_BestPractices_AllocateMemory_ReuseAllocations,
+        ID_RDOC,
     };
 
     var ignore_message = false;

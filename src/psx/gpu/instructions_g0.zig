@@ -423,6 +423,7 @@ pub const SetMaskBitSetting = packed struct {
 
 pub const MaxCommandSizeBytes = 48 * 4; // FIXME use comptime fn?
 
+// FIXME Assert better, because demons can hide here very easily!
 comptime {
     std.debug.assert(4 == @sizeOf(Noop));
     std.debug.assert(4 == @sizeOf(ClearTextureCache));

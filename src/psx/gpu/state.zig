@@ -1,3 +1,5 @@
+const std = @import("std");
+
 const g0 = @import("instructions_g0.zig");
 
 pub const GPUState = struct {
@@ -39,8 +41,53 @@ pub const GPUState = struct {
         index_y: usize,
     } = null,
 
+    pending_draw: bool = false, // Signals that the frame is ready to be drawn
+
     frame_index: u64 = 0,
 
     vertex_offset: u32 = 0,
-    triangle_offset: u32 = 0,
+    vertex_buffer: []PhatVertex,
+
+    index_offset: u32 = 0,
+    index_buffer: []u32,
+
+    draw_command_buffer: []DrawCommand,
+    draw_command_offset: u32 = 0,
+};
+
+pub fn create_gpu_state(allocator: std.mem.Allocator) !GPUState {
+    const vertex_buffer = try allocator.alloc(PhatVertex, 10000); // FIXME
+    errdefer allocator.free(vertex_buffer);
+
+    const index_buffer = try allocator.alloc(u32, 10000); // FIXME
+    errdefer allocator.free(index_buffer);
+
+    const draw_command_buffer = try allocator.alloc(DrawCommand, 10000); // FIXME
+    errdefer allocator.free(draw_command_buffer);
+
+    return GPUState{
+        .vertex_buffer = vertex_buffer,
+        .index_buffer = index_buffer,
+        .draw_command_buffer = draw_command_buffer,
+    };
+}
+
+pub fn destroy_gpu_state(state: *GPUState, allocator: std.mem.Allocator) void {
+    allocator.free(state.vertex_buffer);
+    allocator.free(state.index_buffer);
+    allocator.free(state.draw_command_buffer);
+}
+
+pub const PhatVertex = struct {
+    position: f32_3,
+    color: f32_3,
+};
+
+pub const f32_2 = @Vector(2, f32);
+pub const f32_3 = @Vector(3, f32);
+
+pub const DrawCommand = struct {
+    op_code: g0.OpCode,
+    index_offset: u32,
+    index_count: u32,
 };
