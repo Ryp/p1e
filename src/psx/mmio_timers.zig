@@ -2,6 +2,7 @@ const std = @import("std");
 
 const PSXState = @import("state.zig").PSXState;
 const mmio = @import("mmio.zig");
+const mmio_cdrom = @import("cdrom/mmio.zig");
 
 pub fn load_mmio_generic(comptime T: type, psx: *PSXState, offset: u29) T {
     std.debug.assert(offset < MMIO.OffsetEnd);
@@ -88,7 +89,7 @@ pub const MMIO = struct {
 
     pub const Packed = MMIO_Timers;
 
-    const SizeBytes = mmio.MMIO_CDROM_Offset - Offset;
+    const SizeBytes = mmio_cdrom.MMIO.Offset - Offset;
 
     comptime {
         std.debug.assert(@sizeOf(Packed) == SizeBytes);
