@@ -5,6 +5,7 @@ const PSXState = psx_state.PSXState;
 
 const dma = @import("dma.zig");
 const timers = @import("mmio_timers.zig");
+const cdrom = @import("cdrom/mmio.zig");
 const gpu = @import("gpu/mmio.zig");
 
 const config = @import("config.zig");
@@ -93,6 +94,9 @@ fn load_generic(comptime T: type, psx: *PSXState, address: PSXAddress) T {
                         },
                         timers.MMIO.Offset...timers.MMIO.OffsetEnd - 1 => {
                             return timers.load_mmio_generic(T, psx, offset);
+                        },
+                        cdrom.MMIO.Offset...cdrom.MMIO.OffsetEnd - 1 => {
+                            return cdrom.load_mmio_generic(T, psx, offset);
                         },
                         gpu.MMIO.Offset...gpu.MMIO.OffsetEnd - 1 => {
                             if (T == u32) {
@@ -195,6 +199,9 @@ fn store_generic(comptime T: type, psx: *PSXState, address: PSXAddress, value: T
                         timers.MMIO.Offset...timers.MMIO.OffsetEnd - 1 => {
                             timers.store_mmio_generic(T, psx, offset, value);
                         },
+                        cdrom.MMIO.Offset...cdrom.MMIO.OffsetEnd - 1 => {
+                            cdrom.store_mmio_generic(T, psx, offset, value);
+                        },
                         gpu.MMIO.Offset...gpu.MMIO.OffsetEnd - 1 => {
                             if (T == u32) {
                                 gpu.store_mmio_u32(psx, offset, value);
@@ -260,7 +267,7 @@ pub const MMIO = packed struct {
     interrupt_control: MMIO_IRQControl = .{},
     dma: dma.MMIO.Packed = .{},
     timers: timers.MMIO.Packed = .{},
-    cdrom: MMIO_CDROM = .{},
+    cdrom: cdrom.MMIO.Packed = .{},
     gpu: gpu.MMIO.Packed = .{},
     mdec: MMIO_MDEC = .{},
     spu: MMIO_SPU = .{},
@@ -292,12 +299,6 @@ const MMIO_IRQControl = packed struct {
     control: u32 = undefined,
     mask: u32 = undefined,
     _unused: u64 = undefined,
-};
-
-pub const MMIO_CDROM_Offset = 0x1f801800;
-const MMIO_CDROM_SizeBytes = gpu.MMIO.Offset - MMIO_CDROM_Offset;
-const MMIO_CDROM = packed struct {
-    _unused: u128 = undefined,
 };
 
 pub const MMIO_MDEC_Offset = 0x1f801820;
@@ -352,7 +353,7 @@ comptime {
     std.debug.assert(@offsetOf(MMIO, "interrupt_control") == MMIO_IRQControl_Offset - MMIO_Offset);
     std.debug.assert(@offsetOf(MMIO, "dma") == dma.MMIO.Offset - MMIO_Offset);
     std.debug.assert(@offsetOf(MMIO, "timers") == timers.MMIO.Offset - MMIO_Offset);
-    std.debug.assert(@offsetOf(MMIO, "cdrom") == MMIO_CDROM_Offset - MMIO_Offset);
+    std.debug.assert(@offsetOf(MMIO, "cdrom") == cdrom.MMIO.Offset - MMIO_Offset);
     std.debug.assert(@offsetOf(MMIO, "gpu") == gpu.MMIO.Offset - MMIO_Offset);
     std.debug.assert(@offsetOf(MMIO, "mdec") == MMIO_MDEC_Offset - MMIO_Offset);
     std.debug.assert(@offsetOf(MMIO, "spu") == MMIO_SPU_Offset - MMIO_Offset);
@@ -362,7 +363,6 @@ comptime {
     std.debug.assert(@sizeOf(MMIO_IOPorts) == MMIO_IOPorts_SizeBytes);
     std.debug.assert(@sizeOf(MMIO_MemoryControl2) == MMIO_MemoryControl2_SizeBytes);
     std.debug.assert(@sizeOf(MMIO_IRQControl) == MMIO_IRQControl_SizeBytes);
-    std.debug.assert(@sizeOf(MMIO_CDROM) == MMIO_CDROM_SizeBytes);
     std.debug.assert(@sizeOf(MMIO_MDEC) == MMIO_MDEC_SizeBytes);
     std.debug.assert(@sizeOf(MMIO_SPU) == MMIO_SPU_SizeBytes);
     std.debug.assert(@sizeOf(MMIO_Expansion2) == MMIO_Expansion2_SizeBytes);
