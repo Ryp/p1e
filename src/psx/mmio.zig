@@ -96,13 +96,16 @@ fn load_generic(comptime T: type, psx: *PSXState, address: PSXAddress) T {
                             return timers.load_mmio_generic(T, psx, offset);
                         },
                         cdrom.MMIO.Offset...cdrom.MMIO.OffsetEnd - 1 => {
-                            return cdrom.load_mmio_generic(T, psx, offset);
+                            switch (T) {
+                                u8 => return cdrom.load_mmio_u8(psx, offset),
+                                u16 => return cdrom.load_mmio_u16(psx, offset),
+                                else => @panic("Invalid MMIO load type"),
+                            }
                         },
                         gpu.MMIO.Offset...gpu.MMIO.OffsetEnd - 1 => {
-                            if (T == u32) {
-                                return gpu.load_mmio_u32(psx, offset);
-                            } else {
-                                @panic("Invalid type for GPU MMIO read");
+                            switch (T) {
+                                u32 => return gpu.load_mmio_u32(psx, offset),
+                                else => @panic("Invalid MMIO load type"),
                             }
                         },
                         else => {
@@ -200,13 +203,15 @@ fn store_generic(comptime T: type, psx: *PSXState, address: PSXAddress, value: T
                             timers.store_mmio_generic(T, psx, offset, value);
                         },
                         cdrom.MMIO.Offset...cdrom.MMIO.OffsetEnd - 1 => {
-                            cdrom.store_mmio_generic(T, psx, offset, value);
+                            switch (T) {
+                                u8 => cdrom.store_mmio_u8(psx, offset, value),
+                                else => @panic("Invalid MMIO store type"),
+                            }
                         },
                         gpu.MMIO.Offset...gpu.MMIO.OffsetEnd - 1 => {
-                            if (T == u32) {
-                                gpu.store_mmio_u32(psx, offset, value);
-                            } else {
-                                unreachable;
+                            switch (T) {
+                                u32 => gpu.store_mmio_u32(psx, offset, value),
+                                else => @panic("Invalid MMIO store type"),
                             }
                         },
                         else => {
