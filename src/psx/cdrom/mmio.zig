@@ -4,6 +4,8 @@ const PSXState = @import("../state.zig").PSXState;
 const mmio = @import("../mmio.zig");
 const mmio_gpu = @import("../gpu/mmio.zig");
 
+const execution = @import("execution.zig");
+
 pub fn load_mmio_u8(psx: *PSXState, offset: u29) u8 {
     std.debug.assert(offset >= MMIO.Offset and offset < MMIO.OffsetEnd);
 
@@ -12,9 +14,9 @@ pub fn load_mmio_u8(psx: *PSXState, offset: u29) u8 {
 
     switch (offset) {
         MMIO.IndexStatus_Offset => {
+            psx.mmio.cdrom.index_status.status.PRMEMPT = 1; // FIXME Hack
             std.debug.print("Index/Status Load: {}\n", .{psx.mmio.cdrom.index_status});
-            unreachable; // FIXME Correctly populate status register
-            // return @bitCast(psx.mmio.cdrom.index_status);
+            return @bitCast(psx.mmio.cdrom.index_status);
         },
         MMIO.CommandPort1_Offset => {
             unreachable;
@@ -60,7 +62,28 @@ pub fn store_mmio_u8(psx: *PSXState, offset: u29, value: u8) void {
         },
         MMIO.CommandPort1_Offset...MMIO.CommandPort3_Offset => {
             switch (psx.mmio.cdrom.index_status.index) {
-                0 => unreachable, // FIXME
+                0 => {
+                    const bank = &psx.mmio.cdrom.port.bank0.w;
+
+                    switch (offset) {
+                        MMIO.CommandPort1_Offset => {
+                            const command: @TypeOf(bank.command) = @bitCast(value);
+                            execution.execute_command(psx, command);
+                        },
+                        MMIO.CommandPort2_Offset => {
+                            const parameter: @TypeOf(bank.parameter_fifo) = @bitCast(value);
+                            std.debug.print("Ignored parameter: {}\n", .{parameter});
+
+                            psx.cdrom.parameter_fifo = parameter;
+                        },
+                        MMIO.CommandPort3_Offset => {
+                            const request: @TypeOf(bank.request) = @bitCast(value);
+                            std.debug.print("Ignored request: {}\n", .{request});
+                            // FIXME
+                        },
+                        else => unreachable,
+                    }
+                },
                 1 => {
                     const bank = &psx.mmio.cdrom.port.bank1.w;
 
@@ -298,7 +321,7 @@ const MMIO_CDROM = packed struct {
     };
 
     //   0-7  Volume Level (00h..FFh) (00h=Off, FFh=Max/Double, 80h=Default/Normal)
-    const Volume = enum(u8) {
+    pub const Volume = enum(u8) {
         Off = 0,
         Normal = 0x80,
         Max = 0xff,
