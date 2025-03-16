@@ -3,6 +3,7 @@ const std = @import("std");
 const psx_state = @import("state.zig");
 const PSXState = psx_state.PSXState;
 
+const irq = @import("mmio_interrupts.zig");
 const dma = @import("dma.zig");
 const timers = @import("mmio_timers.zig");
 const cdrom = @import("cdrom/mmio.zig");
@@ -81,13 +82,12 @@ fn load_generic(comptime T: type, psx: *PSXState, address: PSXAddress) T {
                 },
                 MMIO_Offset...MMIO_OffsetEnd - 1 => |offset| {
                     switch (offset) {
-                        MMIO_InterruptMask_Offset,
-                        MMIO_InterruptStatus_Offset,
-                        => {
-                            if (config.enable_debug_print) {
-                                std.debug.print("FIXME load ignored\n", .{});
+                        irq.MMIO.Offset...irq.MMIO.OffsetEnd - 1 => {
+                            switch (T) {
+                                u16 => return irq.load_mmio_generic(u16, psx, offset),
+                                u32 => return irq.load_mmio_generic(u32, psx, offset),
+                                else => @panic("Invalid IRQ MMIO load type"),
                             }
-                            return 0;
                         },
                         dma.MMIO.Offset...dma.MMIO.OffsetEnd - 1 => {
                             return dma.load_mmio_generic(T, psx, offset);
@@ -190,12 +190,17 @@ fn store_generic(comptime T: type, psx: *PSXState, address: PSXAddress, value: T
                         MMIO_0x1f80101c_Offset,
                         MMIO_0x1f801020_Offset,
                         MMIO_0x1f801060_Offset,
-                        MMIO_InterruptMask_Offset,
-                        MMIO_InterruptStatus_Offset,
                         MMIO_UnknownDebug_Offset,
                         => {
                             if (config.enable_debug_print) {
                                 std.debug.print("FIXME store ignored\n", .{});
+                            }
+                        },
+                        irq.MMIO.Offset...irq.MMIO.OffsetEnd - 1 => {
+                            switch (T) {
+                                u16 => return irq.store_mmio_generic(u16, psx, offset, value),
+                                u32 => return irq.store_mmio_generic(u32, psx, offset, value),
+                                else => @panic("Invalid IRQ MMIO store type"),
                             }
                         },
                         dma.MMIO.Offset...dma.MMIO.OffsetEnd - 1 => {
@@ -221,7 +226,7 @@ fn store_generic(comptime T: type, psx: *PSXState, address: PSXAddress, value: T
                         },
                         else => {
                             std.debug.print("address = {x}\n", .{offset});
-                            unreachable;
+                            @panic("Invalid address");
                         },
                     }
                 },
@@ -274,7 +279,7 @@ pub const MMIO = packed struct {
     memory_control1: MMIO_MemoryControl1 = .{},
     io_ports: MMIO_IOPorts = .{},
     memory_control2: MMIO_MemoryControl2 = .{},
-    interrupt_control: MMIO_IRQControl = .{},
+    irq: irq.MMIO.Packed = .{},
     dma: dma.MMIO.Packed = .{},
     timers: timers.MMIO.Packed = .{},
     cdrom: cdrom.MMIO.Packed = .{},
@@ -297,18 +302,10 @@ const MMIO_IOPorts = packed struct {
 };
 
 const MMIO_MemoryControl2_Offset = 0x1f801060;
-const MMIO_MemoryControl2_SizeBytes = MMIO_IRQControl_Offset - MMIO_MemoryControl2_Offset;
+const MMIO_MemoryControl2_SizeBytes = irq.MMIO.Offset - MMIO_MemoryControl2_Offset;
 const MMIO_MemoryControl2 = packed struct {
     ram_size: u32 = 0x0B88,
     _unused: u96 = undefined,
-};
-
-const MMIO_IRQControl_Offset = 0x1f801070;
-const MMIO_IRQControl_SizeBytes = dma.MMIO.Offset - MMIO_IRQControl_Offset;
-const MMIO_IRQControl = packed struct {
-    control: u32 = undefined,
-    mask: u32 = undefined,
-    _unused: u64 = undefined,
 };
 
 pub const MMIO_MDEC_Offset = 0x1f801820;
@@ -340,9 +337,6 @@ const MMIO_0x1f80101c_Offset = 0x1f80101c;
 const MMIO_0x1f801020_Offset = 0x1f801020;
 const MMIO_0x1f801060_Offset = 0x1f801060;
 
-const MMIO_InterruptStatus_Offset = 0x1f801070;
-const MMIO_InterruptMask_Offset = 0x1f801074;
-
 const MMIO_MainVolume_Left = 0x1f801d80;
 const MMIO_MainVolume_Right = 0x1f801d82;
 
@@ -353,7 +347,7 @@ comptime {
     std.debug.assert(@offsetOf(MMIO, "memory_control1") == MMIO_MemoryControl1_Offset - MMIO_Offset);
     std.debug.assert(@offsetOf(MMIO, "io_ports") == MMIO_IOPorts_Offset - MMIO_Offset);
     std.debug.assert(@offsetOf(MMIO, "memory_control2") == MMIO_MemoryControl2_Offset - MMIO_Offset);
-    std.debug.assert(@offsetOf(MMIO, "interrupt_control") == MMIO_IRQControl_Offset - MMIO_Offset);
+    std.debug.assert(@offsetOf(MMIO, "irq") == irq.MMIO.Offset - MMIO_Offset);
     std.debug.assert(@offsetOf(MMIO, "dma") == dma.MMIO.Offset - MMIO_Offset);
     std.debug.assert(@offsetOf(MMIO, "timers") == timers.MMIO.Offset - MMIO_Offset);
     std.debug.assert(@offsetOf(MMIO, "cdrom") == cdrom.MMIO.Offset - MMIO_Offset);
@@ -365,7 +359,6 @@ comptime {
     std.debug.assert(@sizeOf(MMIO_MemoryControl1) == MMIO_MemoryControl1_SizeBytes);
     std.debug.assert(@sizeOf(MMIO_IOPorts) == MMIO_IOPorts_SizeBytes);
     std.debug.assert(@sizeOf(MMIO_MemoryControl2) == MMIO_MemoryControl2_SizeBytes);
-    std.debug.assert(@sizeOf(MMIO_IRQControl) == MMIO_IRQControl_SizeBytes);
     std.debug.assert(@sizeOf(MMIO_MDEC) == MMIO_MDEC_SizeBytes);
     std.debug.assert(@sizeOf(MMIO_Expansion2) == MMIO_Expansion2_SizeBytes);
 
