@@ -3,6 +3,7 @@ const std = @import("std");
 const CPUState = @import("cpu/state.zig").CPUState;
 const gpu = @import("gpu/state.zig");
 const MMIO = @import("mmio.zig").MMIO;
+const cdrom = @import("cdrom/state.zig");
 
 pub const PSXState = struct {
     cpu: CPUState = .{},
@@ -10,6 +11,7 @@ pub const PSXState = struct {
     mmio: MMIO = .{},
     ram: []u8,
     bios: [BIOS_SizeBytes]u8,
+    cdrom: cdrom.CDROMState = .{},
     headless: bool = true,
 };
 
