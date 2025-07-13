@@ -5,7 +5,7 @@ pub fn build(b: *std.Build) void {
     const target = b.standardTargetOptions(.{});
 
     const exe = b.addExecutable(.{
-        .name = "psxemu",
+        .name = "p1e",
         .root_source_file = b.path("src/main.zig"),
         .optimize = optimize,
         .target = target,
