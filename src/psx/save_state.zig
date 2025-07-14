@@ -3,7 +3,7 @@ const std = @import("std");
 const psx_state = @import("state.zig");
 
 const Magic = "P1ES"; // PlayStation 1 Emulator Save
-const VersionMajor = 0;
+const VersionMajor = 0; // Format version
 const VersionMinor = 1;
 const VersionPatch = 0;
 
@@ -29,10 +29,11 @@ pub fn save(psx: psx_state.PSXState, writer: anytype) !void {
 
     try psx.write(writer);
 
-    std.debug.print("Saved state with version: {}.{}.{}\n", .{
+    std.debug.print("Saved state with format version: {}.{}.{} at step {}\n", .{
         header.version.major,
         header.version.minor,
         header.version.patch,
+        psx.step_index,
     });
 }
 
@@ -57,10 +58,11 @@ pub fn load(psx: *psx_state.PSXState, reader: anytype) !void {
 
     try psx.read(reader);
 
-    std.debug.print("Loaded state with version: {}.{}.{}\n", .{
+    std.debug.print("Loaded state with format version: {}.{}.{} at step {}\n", .{
         header.version.major,
         header.version.minor,
         header.version.patch,
+        psx.step_index,
     });
 }
 
@@ -71,7 +73,7 @@ test "State serialization" {
     var psx = try psx_state.create_state(bios, allocator);
     defer psx_state.destroy_state(&psx, allocator);
 
-    const BufferSize = 4096;
+    const BufferSize = 4 * 1024 * 1024; // 4 MiB buffer
     var buffer: [BufferSize]u8 = undefined;
     var stream = std.io.fixedBufferStream(&buffer);
 
@@ -85,4 +87,7 @@ test "State serialization" {
     try load(&psx_2, stream.reader());
 
     try std.testing.expectEqual(psx.cpu, psx_2.cpu);
+    // try std.testing.expectEqual(psx.mmio, psx_2.mmio); // Why isn't this possible?
+    try std.testing.expectEqualSlices(u8, psx.ram, psx_2.ram);
+    try std.testing.expectEqualSlices(u8, &psx.bios, &psx_2.bios);
 }

@@ -53,6 +53,18 @@ pub const GPUState = struct {
 
     draw_command_buffer: []DrawCommand,
     draw_command_offset: u32 = 0,
+
+    pub fn write(self: @This(), writer: anytype) !void {
+        // FIXME
+        _ = self;
+        _ = writer;
+    }
+
+    pub fn read(self: *@This(), reader: anytype) !void {
+        // FIXME
+        _ = self;
+        _ = reader;
+    }
 };
 
 pub fn create_gpu_state(allocator: std.mem.Allocator) !GPUState {
