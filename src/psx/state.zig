@@ -13,6 +13,14 @@ pub const PSXState = struct {
     bios: [BIOS_SizeBytes]u8,
     cdrom: cdrom.CDROMState = .{},
     headless: bool = true,
+
+    pub fn write(self: @This(), writer: anytype) !void {
+        try self.cpu.write(writer);
+    }
+
+    pub fn read(self: *@This(), reader: anytype) !void {
+        try self.cpu.read(reader);
+    }
 };
 
 pub fn create_state(bios: [BIOS_SizeBytes]u8, allocator: std.mem.Allocator) !PSXState {
