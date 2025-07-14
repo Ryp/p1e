@@ -2,6 +2,20 @@ pub const CPUState = struct {
     regs: Registers = .{},
     branch: bool = false,
     delay_slot: bool = false,
+
+    pub fn write(self: @This(), writer: anytype) !void {
+        try self.regs.write(writer);
+
+        try writer.writeByte(if (self.branch) 1 else 0);
+        try writer.writeByte(if (self.delay_slot) 1 else 0);
+    }
+
+    pub fn read(self: *@This(), reader: anytype) !void {
+        try self.regs.read(reader);
+
+        self.branch = try reader.readByte() != 0;
+        self.delay_slot = try reader.readByte() != 0;
+    }
 };
 
 pub const Registers = struct {
@@ -16,7 +30,73 @@ pub const Registers = struct {
     lo: u32 = undefined, // FIXME does it have an initial value?
     sr: SystemRegister = undefined, // FIXME does it have an initial value?
     cause: CauseRegister = undefined, // FIXME does it have an initial value?
-    pending_load: ?struct { register: RegisterName, value: u32, is_unaligned: bool = false } = null,
+    pending_load: ?struct {
+        register: RegisterName,
+        value: u32,
+        is_unaligned: bool = false,
+    } = null,
+
+    pub fn write(self: @This(), writer: anytype) !void {
+        try writer.writeInt(@TypeOf(self.pc), self.pc, .little);
+        try writer.writeInt(@TypeOf(self.next_pc), self.next_pc, .little);
+        try writer.writeInt(@TypeOf(self.current_instruction_pc), self.current_instruction_pc, .little);
+        try writer.writeInt(@TypeOf(self.epc), self.epc, .little);
+
+        for (self.r_in, self.r_out) |r_in, r_out| {
+            try writer.writeInt(u32, r_in, .little);
+            try writer.writeInt(u32, r_out, .little);
+        }
+
+        try writer.writeInt(@TypeOf(self.hi), self.hi, .little);
+        try writer.writeInt(@TypeOf(self.lo), self.lo, .little);
+
+        try writer.writeStruct(self.sr);
+        try writer.writeStruct(self.cause);
+
+        if (self.pending_load) |pending_load| {
+            try writer.writeByte(1); // optional
+            try writer.writeByte(@intFromEnum(pending_load.register));
+            try writer.writeInt(@TypeOf(pending_load.value), pending_load.value, .little);
+            try writer.writeByte(if (pending_load.is_unaligned) 1 else 0);
+        } else {
+            try writer.writeByte(0); // optional
+            try writer.writeByte(0); // register
+            try writer.writeInt(u32, 0, .little); // value
+            try writer.writeByte(0); // is_unaligned
+        }
+    }
+
+    pub fn read(self: *@This(), reader: anytype) !void {
+        self.pc = try reader.readInt(@TypeOf(self.pc), .little);
+        self.next_pc = try reader.readInt(@TypeOf(self.next_pc), .little);
+        self.current_instruction_pc = try reader.readInt(@TypeOf(self.current_instruction_pc), .little);
+        self.epc = try reader.readInt(@TypeOf(self.epc), .little);
+
+        for (&self.r_in, &self.r_out) |*r_in, *r_out| {
+            r_in.* = try reader.readInt(u32, .little);
+            r_out.* = try reader.readInt(u32, .little);
+        }
+
+        self.hi = try reader.readInt(@TypeOf(self.hi), .little);
+        self.lo = try reader.readInt(@TypeOf(self.lo), .little);
+
+        self.sr = try reader.readStruct(@TypeOf(self.sr));
+        self.cause = try reader.readStruct(@TypeOf(self.cause));
+
+        const has_pending_load = try reader.readByte() != 0;
+        const register: RegisterName = @enumFromInt(try reader.readByte());
+        const value = try reader.readInt(u32, .little);
+        const is_unaligned = try reader.readByte() != 0;
+
+        self.pending_load = if (has_pending_load)
+            .{
+                .register = register,
+                .value = value,
+                .is_unaligned = is_unaligned,
+            }
+        else
+            null;
+    }
 };
 
 // Register Name Conventional use
