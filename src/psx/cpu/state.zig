@@ -135,19 +135,32 @@ pub const RegisterName = enum(u5) {
     ra = 31, // Function return address
 };
 
-const SystemRegister = packed struct {
-    // 0     IEc Current Interrupt Enable  (0=Disable, 1=Enable) ;rfe pops IEp here
-    // 1     KUc Current Kernel/User Mode  (0=Kernel, 1=User)    ;rfe pops KUp here
-    // 2     IEp Previous Interrupt Disable                      ;rfe pops IEo here
-    // 3     KUp Previous Kernel/User Mode                       ;rfe pops KUo here
-    // 4     IEo Old Interrupt Disable                       ;left unchanged by rfe
-    // 5     KUo Old Kernel/User Mode                        ;left unchanged by rfe
-    interrupt_stack: u6,
+const SystemRegister = packed struct(u32) {
+    interrupt_stack: packed struct(u6) {
+        const InterruptStackElement = packed struct(u2) {
+            enabled: bool,
+            mode: enum(u1) {
+                Kernel,
+                User,
+            },
+        };
+
+        // 0     IEc Current Interrupt Enable  (0=Disable, 1=Enable) ;rfe pops IEp here
+        // 1     KUc Current Kernel/User Mode  (0=Kernel, 1=User)    ;rfe pops KUp here
+        // 2     IEp Previous Interrupt Disable                      ;rfe pops IEo here
+        // 3     KUp Previous Kernel/User Mode                       ;rfe pops KUo here
+        // 4     IEo Old Interrupt Disable                       ;left unchanged by rfe
+        // 5     KUo Old Kernel/User Mode                        ;left unchanged by rfe
+        current: InterruptStackElement,
+        previous: InterruptStackElement,
+        old: InterruptStackElement,
+    },
     // 6-7   -   Not used (zero)
     _unused_b6_7: u2,
     // 8-15  Im  8 bit interrupt mask fields. When set the corresponding
     //           interrupts are allowed to cause an exception.
-    interrupt_mask: u8, // Im
+    interrupt_mask: u3, // Im
+    interrupt_mask_unused: u5, // Only the first bits are really useful
     // 16    Isc Isolate Cache (0=No, 1=Isolate)
     //             When isolated, all load and store operations are targetted
     //             to the Data cache, and never the main memory.
@@ -188,7 +201,7 @@ const SystemRegister = packed struct {
     _unused_b26_31: u6,
 };
 
-const CauseRegister = packed struct {
+const CauseRegister = packed struct(u32) {
     // 0-1   -      Not used (zero)
     _unused_b0_1: u2,
     // 2-6   Excode Describes what kind of exception occured:
@@ -199,7 +212,12 @@ const CauseRegister = packed struct {
     //              contain the last value written to them. As long
     //              as any of the bits are set they will cause an
     //              interrupt if the corresponding bit is set in IM.
-    interrupt_pending: u8,
+    interrupt_pending: packed struct(u3) {
+        software_irq0: bool,
+        software_irq1: bool,
+        hardware_irq: bool,
+    },
+    interrupt_pending_unused: u5, // Only the first HW interrupt is wired
     // 16-27 -      Not used (zero)
     _unused_b16_27: u12,
     // 28-29 CE     Opcode Bit26-27 (aka coprocessor number in case of COP opcodes)
