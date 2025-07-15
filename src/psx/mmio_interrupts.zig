@@ -4,17 +4,16 @@ const PSXState = @import("state.zig").PSXState;
 const mmio_dma = @import("dma.zig");
 
 const config = @import("config.zig");
+const cpu_execution = @import("cpu/execution.zig");
 
 pub fn load_mmio_generic(comptime T: type, psx: *PSXState, offset: u29) T {
     std.debug.assert(T != u8);
 
     switch (offset) {
         MMIO.Status_Offset => {
-            std.debug.print("MMIO IRQ Status load: {}\n", .{psx.mmio.irq.status.typed}); // FIXME
             return psx.mmio.irq.status.raw; // Implicit upcast
         },
         MMIO.Mask_Offset => {
-            std.debug.print("MMIO IRQ Mask load: {}\n", .{psx.mmio.irq.mask.typed}); // FIXME
             return psx.mmio.irq.mask.raw; // Implicit upcast
         },
         else => @panic("Invalid IRQ MMIO load offset"),
@@ -31,10 +30,14 @@ pub fn store_mmio_generic(comptime T: type, psx: *PSXState, offset: u29, value: 
             // Acknowledge IRQ
             psx.mmio.irq.status.raw &= @truncate(value);
             std.debug.print("MMIO ACK IRQ - now: {}\n", .{psx.mmio.irq.status.typed}); // FIXME
+
+            cpu_execution.update_hardware_interrupt_line(psx);
         },
         MMIO.Mask_Offset => {
             psx.mmio.irq.mask.raw = @truncate(value);
             std.debug.print("MMIO Set IRQ Mask: {}\n", .{psx.mmio.irq.mask.typed}); // FIXME
+
+            cpu_execution.update_hardware_interrupt_line(psx);
         },
         else => @panic("Invalid IRQ MMIO store offset"),
     }

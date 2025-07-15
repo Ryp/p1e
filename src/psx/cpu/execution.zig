@@ -39,8 +39,13 @@ pub fn step(psx: *PSXState) void {
     psx.cpu.delay_slot = psx.cpu.branch;
     psx.cpu.branch = false;
 
-    execute_instruction(psx, instruction);
+    if ((psx.cpu.regs.sr.interrupt_stack.current.enabled) and (@as(u3, @bitCast(psx.cpu.regs.cause.interrupt_pending)) & psx.cpu.regs.sr.interrupt_mask) != 0) {
+        execute_exception(psx, .INT);
+    } else {
+        execute_instruction(psx, instruction);
+    }
 
+    // Do this when exactly?
     @memcpy(&psx.cpu.regs.r_in, &psx.cpu.regs.r_out);
 }
 
@@ -456,9 +461,11 @@ fn execute_mtc(psx: *PSXState, instruction: instructions.mtc) void {
         .SR => psx.cpu.regs.sr = @bitCast(value),
         .CAUSE => switch (value) {
             0 => {
-                if (config.enable_debug_print) {
-                    std.debug.print("FIXME mtc0 target write ignored\n", .{});
-                }
+                const cause_new: @TypeOf(psx.cpu.regs.cause) = @bitCast(value);
+
+                // Only those two bits are R/W
+                psx.cpu.regs.cause.interrupt_pending.software_irq0 = cause_new.interrupt_pending.software_irq0;
+                psx.cpu.regs.cause.interrupt_pending.software_irq1 = cause_new.interrupt_pending.software_irq1;
             },
             else => unreachable,
         },
@@ -736,7 +743,7 @@ fn execute_mtlo(psx: *PSXState, instruction: instructions.mtlo) void {
 }
 
 fn execute_rfe(psx: *PSXState) void {
-    psx.cpu.regs.sr.interrupt_stack >>= 2;
+    execute_interrupt_stack_pop(psx);
 }
 
 fn execute_cop1(psx: *PSXState) void {
@@ -810,6 +817,32 @@ fn execute_generic_branch(psx: *PSXState, offset: i32) void {
     psx.cpu.regs.next_pc = wrapping_add_u32_i32(psx.cpu.regs.pc, offset);
 }
 
+pub fn update_hardware_interrupt_line(psx: *PSXState) void {
+    psx.cpu.regs.cause.interrupt_pending.hardware_irq = (psx.mmio.irq.status.raw & psx.mmio.irq.mask.raw != 0);
+}
+
+const HardwareInterruptType = enum {
+    IRQ0_VBlank, // 0     IRQ0 VBLANK (PAL=50Hz, NTSC=60Hz)
+    IRQ1_GPU, //    1     IRQ1 GPU   Can be requested via GP0(1Fh) command (rarely used)
+    IRQ2_CDRom, //  2     IRQ2 CDROM
+    IRQ3_DMA, //    3     IRQ3 DMA
+    IRQ4_TMR0, //   4     IRQ4 TMR0  Timer 0 aka Root Counter 0 (Sysclk or Dotclk)
+    IRQ5_TMR1, //   5     IRQ5 TMR1  Timer 1 aka Root Counter 1 (Sysclk or H-blank)
+    IRQ6_TMR2, //   6     IRQ6 TMR2  Timer 2 aka Root Counter 2 (Sysclk or Sysclk/8)
+    IRQ7_Controller_Memory_Card, //   7     IRQ7 Controller and Memory Card - Byte Received Interrupt
+    IRQ8_SIO, //    8     IRQ8 SIO
+    IRQ9_SPU, //    9     IRQ9 SPU
+    IRQ10_Controller_Lightpen, //   10    IRQ10 Controller - Lightpen Interrupt (reportedly also PIO...?)
+};
+
+pub fn request_hardware_interrupt(psx: *PSXState, interrupt: HardwareInterruptType) void {
+    const interrupt_bit = @as(u11, 1) << @intFromEnum(interrupt);
+
+    psx.mmio.irq.status.raw |= interrupt_bit;
+
+    update_hardware_interrupt_line(psx);
+}
+
 fn execute_exception(psx: *PSXState, cause: cpu.ExceptionCause) void {
     psx.cpu.regs.cause = @bitCast(@as(u32, 0));
     psx.cpu.regs.cause.cause = cause;
@@ -821,10 +854,22 @@ fn execute_exception(psx: *PSXState, cause: cpu.ExceptionCause) void {
         psx.cpu.regs.epc -%= 4;
     }
 
-    psx.cpu.regs.sr.interrupt_stack <<= 2;
+    execute_interrupt_stack_push(psx);
 
     psx.cpu.regs.pc = if (psx.cpu.regs.sr.bev == 1) 0xbfc00180 else 0x80000080;
     psx.cpu.regs.next_pc = psx.cpu.regs.pc +% 4;
+}
+
+fn execute_interrupt_stack_push(psx: *PSXState) void {
+    psx.cpu.regs.sr.interrupt_stack.old = psx.cpu.regs.sr.interrupt_stack.previous;
+    psx.cpu.regs.sr.interrupt_stack.previous = psx.cpu.regs.sr.interrupt_stack.current;
+    psx.cpu.regs.sr.interrupt_stack.current = .{ .enabled = false, .mode = .Kernel };
+}
+
+fn execute_interrupt_stack_pop(psx: *PSXState) void {
+    psx.cpu.regs.sr.interrupt_stack.current = psx.cpu.regs.sr.interrupt_stack.previous;
+    psx.cpu.regs.sr.interrupt_stack.previous = psx.cpu.regs.sr.interrupt_stack.old;
+    // NOTE: We don't touch the `old` field here
 }
 
 fn wrapping_add_u32_i32(lhs: u32, rhs: i32) u32 {
