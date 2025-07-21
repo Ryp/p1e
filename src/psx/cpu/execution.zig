@@ -459,15 +459,12 @@ fn execute_mtc(psx: *PSXState, instruction: instructions.mtc) void {
             }
         },
         .SR => psx.cpu.regs.sr = @bitCast(value),
-        .CAUSE => switch (value) {
-            0 => {
-                const cause_new: @TypeOf(psx.cpu.regs.cause) = @bitCast(value);
+        .CAUSE => {
+            const cause_new: @TypeOf(psx.cpu.regs.cause) = @bitCast(value);
 
-                // Only those two bits are R/W
-                psx.cpu.regs.cause.interrupt_pending.software_irq0 = cause_new.interrupt_pending.software_irq0;
-                psx.cpu.regs.cause.interrupt_pending.software_irq1 = cause_new.interrupt_pending.software_irq1;
-            },
-            else => unreachable,
+            // Only those two bits are R/W
+            psx.cpu.regs.cause.interrupt_pending.software_irq0 = cause_new.interrupt_pending.software_irq0;
+            psx.cpu.regs.cause.interrupt_pending.software_irq1 = cause_new.interrupt_pending.software_irq1;
         },
         .EPC => unreachable,
         _ => unreachable,
