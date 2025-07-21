@@ -51,9 +51,9 @@ pub const PSXAddress = packed struct {
     offset: u29,
     mapping: enum(u3) {
         Useg = 0b000,
-        Seg0 = 0b100,
-        Seg1 = 0b101,
-        Seg2 = 0b111,
+        Kseg0 = 0b100,
+        Kseg1 = 0b101,
+        Kseg2 = 0b111,
     },
 };
 
@@ -73,7 +73,7 @@ fn load_generic(comptime T: type, psx: *PSXState, address: PSXAddress) T {
     std.debug.assert(address.offset % type_bytes == 0);
 
     switch (address.mapping) {
-        .Useg, .Seg0, .Seg1 => {
+        .Useg, .Kseg0, .Kseg1 => {
             switch (address.offset) {
                 RAM_Offset...RAM_OffsetEnd - 1 => |offset| {
                     const local_offset = offset - RAM_Offset;
@@ -131,7 +131,7 @@ fn load_generic(comptime T: type, psx: *PSXState, address: PSXAddress) T {
                 else => unreachable,
             }
         },
-        .Seg2 => {
+        .Kseg2 => {
             switch (address.offset) {
                 CacheControl_Offset => {
                     if (config.enable_debug_print) {
@@ -171,7 +171,7 @@ fn store_generic(comptime T: type, psx: *PSXState, address: PSXAddress, value: T
     std.debug.assert(address.offset % type_bytes == 0);
 
     switch (address.mapping) {
-        .Useg, .Seg0, .Seg1 => {
+        .Useg, .Kseg0, .Kseg1 => {
             switch (address.offset) {
                 RAM_Offset...RAM_OffsetEnd - 1 => |offset| {
                     const local_offset = offset - RAM_Offset;
@@ -234,7 +234,7 @@ fn store_generic(comptime T: type, psx: *PSXState, address: PSXAddress, value: T
                 else => unreachable,
             }
         },
-        .Seg2 => {
+        .Kseg2 => {
             switch (address.offset) {
                 CacheControl_Offset => {
                     if (config.enable_debug_print) {
