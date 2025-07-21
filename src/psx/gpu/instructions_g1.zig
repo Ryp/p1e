@@ -19,38 +19,38 @@ pub const CommandRaw = packed struct {
 };
 
 const Command = union(OpCode) {
-    SoftReset: packed struct {
+    SoftReset: packed struct(u24) {
         zero_b0_23: u24,
     },
-    CommandBufferReset: packed struct {
+    CommandBufferReset: packed struct(u24) {
         zero_b0_23: u24,
     },
-    AcknowledgeInterrupt: packed struct {
+    AcknowledgeInterrupt: packed struct(u24) {
         zero_b0_23: u24,
     },
-    SetDisplayEnabled: packed struct {
+    SetDisplayEnabled: packed struct(u24) {
         display_enabled: mmio.MMIO.Packed.DisplayState,
         zero_b1_23: u23,
     },
-    SetDMADirection: packed struct {
+    SetDMADirection: packed struct(u24) {
         dma_direction: mmio.MMIO.Packed.DMADirection,
         zero_b2_23: u22,
     },
-    SetDisplayVRAMStart: packed struct {
+    SetDisplayVRAMStart: packed struct(u24) {
         x: u10,
         y: u9,
         zero_b19_23: u5,
     },
-    SetDisplayHorizontalRange: packed struct {
+    SetDisplayHorizontalRange: packed struct(u24) {
         x1: u12,
         x2: u12,
     },
-    SetDisplayVerticalRange: packed struct {
+    SetDisplayVerticalRange: packed struct(u24) {
         y1: u10,
         y2: u10,
         zero_b20_23: u4,
     },
-    SetDisplayMode: packed struct {
+    SetDisplayMode: packed struct(u24) {
         horizontal_resolution1: u2,
         vertical_resolution: mmio.MMIO.Packed.VerticalResolution,
         video_mode: mmio.MMIO.Packed.VideoMode,
