@@ -128,7 +128,15 @@ fn load_generic(comptime T: type, psx: *PSXState, address: PSXAddress) T {
                     Expansion_ParallelPortOffset => return 0xff,
                     else => unreachable,
                 },
-                else => unreachable,
+                Scratchpad_Offset...Scratchpad_OffsetEnd - 1 => |offset| {
+                    std.debug.assert(address.mapping != .Kseg1);
+                    const local_offset = offset - Scratchpad_Offset;
+                    const type_slice = psx.scratchpad[local_offset..];
+                    return std.mem.readInt(T, type_slice[0..type_bytes], .little);
+                },
+                else => {
+                    @panic("Invalid address");
+                },
             }
         },
         .Kseg2 => {
@@ -249,8 +257,9 @@ fn store_generic(comptime T: type, psx: *PSXState, address: PSXAddress, value: T
 
 // KUSEG       KSEG0     KSEG1 Length Description
 // 0x00000000 0x80000000 0xa0000000 2048K Main RAM
-const RAM_Offset = 0x00000000;
-const RAM_OffsetEnd = RAM_Offset + psx_state.RAM_SizeBytes;
+pub const RAM_SizeBytes = 2 * 1024 * 1024;
+pub const RAM_Offset = 0x00000000;
+const RAM_OffsetEnd = RAM_Offset + RAM_SizeBytes;
 
 // 0x1f000000 0x9f000000 0xbf000000 8192K Expansion Region 1
 const Expansion_SizeBytes = 8 * 1024 * 1024;
@@ -260,13 +269,14 @@ const Expansion_OffsetEnd = Expansion_Offset + Expansion_SizeBytes;
 const Expansion_ParallelPortOffset = 0x1f00_0084;
 
 // 0x1f800000 0x9f800000 0xbf800000 1K Scratchpad
-const Scratchpad_SizeBytes = 1024;
+pub const Scratchpad_SizeBytes = 1024;
 const Scratchpad_Offset = 0x1f800000;
 const Scratchpad_OffsetEnd = Scratchpad_Offset + Scratchpad_SizeBytes;
 
 // 0x1fc00000 0x9fc00000 0xbfc00000 512K BIOS ROM
+pub const BIOS_SizeBytes = 512 * 1024;
 const BIOS_Offset = 0x1fc00000;
-const BIOS_OffsetEnd = BIOS_Offset + psx_state.BIOS_SizeBytes;
+const BIOS_OffsetEnd = BIOS_Offset + BIOS_SizeBytes;
 
 // 0x1ffe0130constant
 const CacheControl_Offset = 0x1ffe0130;

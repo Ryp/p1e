@@ -2,16 +2,19 @@ const std = @import("std");
 
 const CPUState = @import("cpu/state.zig").CPUState;
 const gpu = @import("gpu/state.zig");
-const MMIO = @import("mmio.zig").MMIO;
+const mmio = @import("mmio.zig");
 const cdrom = @import("cdrom/state.zig");
 
 pub const PSXState = struct {
     cpu: CPUState = .{},
     gpu: gpu.GPUState,
     cdrom: cdrom.CDROMState = .{},
-    mmio: MMIO = .{},
+    mmio: mmio.MMIO = .{},
     ram: []u8,
-    bios: [BIOS_SizeBytes]u8,
+    bios: [mmio.BIOS_SizeBytes]u8,
+    scratchpad: [mmio.Scratchpad_SizeBytes]u8,
+
+    step_index: u64 = 0,
     headless: bool = true,
 
     pub fn write(self: @This(), writer: anytype) !void {
@@ -22,7 +25,9 @@ pub const PSXState = struct {
         try writer.writeStruct(self.mmio);
         try writer.writeAll(self.ram);
         try writer.writeAll(&self.bios);
+        try writer.writeAll(&self.scratchpad);
 
+        try writer.writeInt(@TypeOf(self.step_index), self.step_index, .little);
         try writer.writeByte(if (self.headless) 1 else 0);
     }
 
@@ -43,18 +48,25 @@ pub const PSXState = struct {
             return error.InvalidBIOSSize;
         }
 
+        const scratchpad_bytes_written = try reader.readAll(&self.scratchpad);
+        if (scratchpad_bytes_written != self.scratchpad.len) {
+            return error.InvalidScratchPadSize;
+        }
+
+        self.step_index = try reader.readInt(@TypeOf(self.step_index), .little);
         self.headless = try reader.readByte() != 0;
     }
 };
 
-pub fn create_state(bios: [BIOS_SizeBytes]u8, allocator: std.mem.Allocator) !PSXState {
-    const ram = try allocator.alloc(u8, RAM_SizeBytes);
+pub fn create_state(bios: [mmio.BIOS_SizeBytes]u8, allocator: std.mem.Allocator) !PSXState {
+    const ram = try allocator.alloc(u8, mmio.RAM_SizeBytes);
     errdefer allocator.free(ram);
 
     return PSXState{
         .gpu = try gpu.create_gpu_state(allocator),
         .ram = ram,
         .bios = bios,
+        .scratchpad = std.mem.zeroes([mmio.Scratchpad_SizeBytes]u8),
     };
 }
 
@@ -63,6 +75,3 @@ pub fn destroy_state(psx: *PSXState, allocator: std.mem.Allocator) void {
 
     allocator.free(psx.ram);
 }
-
-pub const RAM_SizeBytes = 2 * 1024 * 1024;
-pub const BIOS_SizeBytes = 512 * 1024;

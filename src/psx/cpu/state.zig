@@ -250,3 +250,13 @@ pub const ExceptionCause = enum(u5) {
     Ov = 0x0C, // Arithmetic overflow
     _,
 };
+
+// cop0r15 - PRID - Processor ID (R)
+//
+//   0-7   Revision
+//   8-15  Implementation
+//   16-31 Not used
+//
+// PRID=00000001h on Playstation with CPU CXD8530BQ/CXD8530CQ
+// PRID=00000002h on Playstation with CPU CXD8606CQ
+pub const CPU_PRID = 0x00_00_00_02;

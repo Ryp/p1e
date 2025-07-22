@@ -1,10 +1,11 @@
 const std = @import("std");
 
 const psx_state = @import("state.zig");
+const mmio = @import("mmio.zig");
 
 const Magic = "P1ES"; // PlayStation 1 Emulator Save
 const VersionMajor = 0; // Format version
-const VersionMinor = 1;
+const VersionMinor = 2;
 const VersionPatch = 0;
 
 // FIXME do somthing with this
@@ -52,8 +53,17 @@ pub fn load(psx: *psx_state.PSXState, reader: anytype) !void {
         return error.UnsupportedNewerMajorVersion;
     } else if (header.version.major < VersionMajor) {
         // FIXME
-        std.debug.print("Unsupported major version: {}, version {}\n", .{ header.version.major, VersionMajor });
+        std.debug.print("Unsupported major version: {}, supports from {}\n", .{ header.version.major, VersionMajor });
         return error.UnsupportedOlderMajorVersion;
+    } else {
+        if (header.version.minor > VersionMinor) {
+            std.debug.print("Unsupported minor version: {}, supports up to {}\n", .{ header.version.minor, VersionMinor });
+            return error.UnsupportedNewerMinorVersion;
+        } else if (header.version.minor < VersionMinor) {
+            // FIXME
+            std.debug.print("Unsupported minor version: {}, supports from {}\n", .{ header.version.minor, VersionMinor });
+            return error.UnsupportedOlderMinorVersion;
+        }
     }
 
     try psx.read(reader);
@@ -68,7 +78,7 @@ pub fn load(psx: *psx_state.PSXState, reader: anytype) !void {
 
 test "State serialization" {
     const allocator = std.heap.page_allocator;
-    const bios = std.mem.zeroes([psx_state.BIOS_SizeBytes]u8);
+    const bios = std.mem.zeroes([mmio.BIOS_SizeBytes]u8);
 
     var psx = try psx_state.create_state(bios, allocator);
     defer psx_state.destroy_state(&psx, allocator);
@@ -87,7 +97,7 @@ test "State serialization" {
     try load(&psx_2, stream.reader());
 
     try std.testing.expectEqual(psx.cpu, psx_2.cpu);
-    // try std.testing.expectEqual(psx.mmio, psx_2.mmio); // Why isn't this possible?
+    // try std.testing.expectEqual(psx.mmio, psx_2.mmio); // FIXME packed unions are a problem
     try std.testing.expectEqualSlices(u8, psx.ram, psx_2.ram);
     try std.testing.expectEqualSlices(u8, &psx.bios, &psx_2.bios);
 }
