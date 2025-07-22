@@ -12,6 +12,8 @@ const instructions = @import("instructions.zig");
 const debug = @import("debug.zig");
 
 pub fn step(psx: *PSXState) void {
+    defer psx.step_index += 1;
+
     psx.cpu.regs.current_instruction_pc = psx.cpu.regs.pc;
 
     if (psx.cpu.regs.pc % 4 != 0) {
@@ -431,10 +433,15 @@ fn execute_mfc(psx: *PSXState, instruction: instructions.mtc) void {
     std.debug.assert(instruction.cop_index == 0);
 
     const value: u32 = switch (instruction.target) {
-        .BPC, .BDA, .JUMPDEST, .DCIC, .BadVaddr, .BDAM, .BPCM, .PRID => unreachable,
+        .BPC, .BDA, .JUMPDEST, .DCIC, .BadVaddr, .BDAM, .BPCM => {
+            std.debug.print("mfc0 target read ignored: {}\n", .{instruction.target});
+
+            unreachable; // These are not implemented yet
+        },
         .SR => @bitCast(psx.cpu.regs.sr),
         .CAUSE => @bitCast(psx.cpu.regs.cause),
         .EPC => psx.cpu.regs.epc,
+        .PRID => cpu.CPU_PRID,
         _ => unreachable,
     };
 
