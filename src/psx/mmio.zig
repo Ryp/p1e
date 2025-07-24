@@ -286,51 +286,95 @@ const MMIO_SizeBytes = 8 * 1024;
 pub const MMIO_Offset = 0x1f801000;
 const MMIO_OffsetEnd = MMIO_Offset + MMIO_SizeBytes;
 pub const MMIO = packed struct {
-    memory_control1: MMIO_MemoryControl1 = .{},
-    io_ports: MMIO_IOPorts = .{},
-    memory_control2: MMIO_MemoryControl2 = .{},
+    memory_control1: MC1_MMIO.Packed = .{},
+    io_ports: IOPorts_MMIO.Packed = .{},
+    memory_control2: MC2_MMIO.Packed = .{},
     irq: irq.MMIO.Packed = .{},
     dma: dma.MMIO.Packed = .{},
     timers: timers.MMIO.Packed = .{},
     cdrom: cdrom.MMIO.Packed = .{},
     gpu: gpu.MMIO.Packed = .{},
-    mdec: MMIO_MDEC = .{},
+    mdec: MDEC_MMIO.Packed = .{},
     spu: spu.MMIO.Packed = .{},
-    expansion2: MMIO_Expansion2 = .{},
+    expansion2: Expansion2_MMIO.Packed = .{},
 };
 
-const MMIO_MemoryControl1_Offset = 0x1f801000;
-const MMIO_MemoryControl1_SizeBytes = MMIO_IOPorts_Offset - MMIO_MemoryControl1_Offset;
-const MMIO_MemoryControl1 = packed struct {
-    _unused: u512 = undefined,
+pub const MC1_MMIO = struct {
+    pub const Offset = 0x1f801000;
+    pub const OffsetEnd = Offset + SizeBytes;
+
+    const SizeBytes = IOPorts_MMIO.Offset - Offset;
+
+    comptime {
+        std.debug.assert(@sizeOf(Packed) == SizeBytes);
+    }
+
+    pub const Packed = packed struct {
+        _unused: u512 = undefined,
+    };
 };
 
-const MMIO_IOPorts_Offset = 0x1f801040;
-const MMIO_IOPorts_SizeBytes = MMIO_MemoryControl2_Offset - MMIO_IOPorts_Offset;
-const MMIO_IOPorts = packed struct {
-    _unused: u256 = undefined,
+pub const IOPorts_MMIO = struct {
+    pub const Offset = 0x1f801040;
+    pub const OffsetEnd = Offset + SizeBytes;
+
+    const SizeBytes = MC2_MMIO.Offset - Offset;
+
+    comptime {
+        std.debug.assert(@sizeOf(Packed) == SizeBytes);
+    }
+
+    pub const Packed = packed struct {
+        _unused: u256 = undefined,
+    };
 };
 
-const MMIO_MemoryControl2_Offset = 0x1f801060;
-const MMIO_MemoryControl2_SizeBytes = irq.MMIO.Offset - MMIO_MemoryControl2_Offset;
-const MMIO_MemoryControl2 = packed struct {
-    ram_size: u32 = 0x0B88,
-    _unused: u96 = undefined,
+pub const MC2_MMIO = struct {
+    pub const Offset = 0x1f801060;
+    pub const OffsetEnd = Offset + SizeBytes;
+
+    const SizeBytes = irq.MMIO.Offset - Offset;
+
+    comptime {
+        std.debug.assert(@sizeOf(Packed) == SizeBytes);
+    }
+
+    pub const Packed = packed struct {
+        ram_size: u32 = 0x0B88, // FIXME
+        _unused: u96 = undefined,
+    };
 };
 
-pub const MMIO_MDEC_Offset = 0x1f801820;
-const MMIO_MDEC_SizeBytes = spu.MMIO.Offset - MMIO_MDEC_Offset;
-const MMIO_MDEC_OffsetEnd = MMIO_MDEC_Offset + MMIO_MDEC_SizeBytes;
-const MMIO_MDEC = packed struct {
-    _unused: u7936 = undefined,
+pub const MDEC_MMIO = struct {
+    pub const Offset = 0x1f801820;
+    pub const OffsetEnd = Offset + SizeBytes;
+
+    const SizeBytes = spu.MMIO.Offset - Offset;
+
+    comptime {
+        std.debug.assert(@sizeOf(Packed) == SizeBytes);
+    }
+
+    pub const Packed = packed struct {
+        _unused: u7936 = undefined,
+    };
 };
 
-pub const MMIO_Expansion2_Offset = 0x1f802000;
-const MMIO_Expansion2_SizeBytes = MMIO_OffsetEnd - MMIO_Expansion2_Offset;
-const MMIO_Expansion2 = packed struct {
-    // FIXME Abusing the compiler for 1 bit here, one more and we hit the limit.
-    // Really it should be 32768.
-    _unused: u32767 = undefined,
+pub const Expansion2_MMIO = struct {
+    pub const Offset = 0x1f802000;
+    pub const OffsetEnd = Offset + SizeBytes;
+
+    const SizeBytes = MMIO_OffsetEnd - Offset;
+
+    comptime {
+        std.debug.assert(@sizeOf(Packed) == SizeBytes);
+    }
+
+    pub const Packed = packed struct {
+        // FIXME Abusing the compiler for 1 bit here, one more and we hit the limit.
+        // Really it should be 32768.
+        _unused: u32767 = undefined,
+    };
 };
 
 // Known offsets, see https://psx-spx.consoledev.net/iomap/
@@ -354,23 +398,17 @@ const MMIO_UnknownDebug_Offset = 0x1f802041;
 
 comptime {
     // Assert that the layout of the MMIO struct is correct, otherwise all hell breaks loose
-    std.debug.assert(@offsetOf(MMIO, "memory_control1") == MMIO_MemoryControl1_Offset - MMIO_Offset);
-    std.debug.assert(@offsetOf(MMIO, "io_ports") == MMIO_IOPorts_Offset - MMIO_Offset);
-    std.debug.assert(@offsetOf(MMIO, "memory_control2") == MMIO_MemoryControl2_Offset - MMIO_Offset);
+    std.debug.assert(@offsetOf(MMIO, "memory_control1") == MC1_MMIO.Offset - MMIO_Offset);
+    std.debug.assert(@offsetOf(MMIO, "io_ports") == IOPorts_MMIO.Offset - MMIO_Offset);
+    std.debug.assert(@offsetOf(MMIO, "memory_control2") == MC2_MMIO.Offset - MMIO_Offset);
     std.debug.assert(@offsetOf(MMIO, "irq") == irq.MMIO.Offset - MMIO_Offset);
     std.debug.assert(@offsetOf(MMIO, "dma") == dma.MMIO.Offset - MMIO_Offset);
     std.debug.assert(@offsetOf(MMIO, "timers") == timers.MMIO.Offset - MMIO_Offset);
     std.debug.assert(@offsetOf(MMIO, "cdrom") == cdrom.MMIO.Offset - MMIO_Offset);
     std.debug.assert(@offsetOf(MMIO, "gpu") == gpu.MMIO.Offset - MMIO_Offset);
-    std.debug.assert(@offsetOf(MMIO, "mdec") == MMIO_MDEC_Offset - MMIO_Offset);
+    std.debug.assert(@offsetOf(MMIO, "mdec") == MDEC_MMIO.Offset - MMIO_Offset);
     std.debug.assert(@offsetOf(MMIO, "spu") == spu.MMIO.Offset - MMIO_Offset);
-    std.debug.assert(@offsetOf(MMIO, "expansion2") == MMIO_Expansion2_Offset - MMIO_Offset);
-
-    std.debug.assert(@sizeOf(MMIO_MemoryControl1) == MMIO_MemoryControl1_SizeBytes);
-    std.debug.assert(@sizeOf(MMIO_IOPorts) == MMIO_IOPorts_SizeBytes);
-    std.debug.assert(@sizeOf(MMIO_MemoryControl2) == MMIO_MemoryControl2_SizeBytes);
-    std.debug.assert(@sizeOf(MMIO_MDEC) == MMIO_MDEC_SizeBytes);
-    std.debug.assert(@sizeOf(MMIO_Expansion2) == MMIO_Expansion2_SizeBytes);
+    std.debug.assert(@offsetOf(MMIO, "expansion2") == Expansion2_MMIO.Offset - MMIO_Offset);
 
     std.debug.assert(@sizeOf(MMIO) == MMIO_SizeBytes);
 }

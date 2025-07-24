@@ -60,7 +60,7 @@ pub const MMIO = struct {
 
     pub const Packed = MMIO_GPU;
 
-    const SizeBytes = mmio.MMIO_MDEC_Offset - Offset;
+    const SizeBytes = mmio.MDEC_MMIO.Offset - Offset;
 
     const GPUREAD_Offset = 0x1f801810;
     const GPUSTAT_Offset = 0x1f801814;

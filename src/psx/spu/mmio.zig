@@ -30,15 +30,13 @@ pub const MMIO = struct {
     pub const Offset = 0x1f801c00;
     pub const OffsetEnd = Offset + SizeBytes;
 
-    pub const Packed = MMIO_SPU;
-
-    const SizeBytes = mmio.MMIO_Expansion2_Offset - Offset;
+    const SizeBytes = mmio.Expansion2_MMIO.Offset - Offset;
 
     comptime {
         std.debug.assert(@sizeOf(Packed) == SizeBytes);
     }
-};
 
-const MMIO_SPU = packed struct {
-    _unused: u8192 = undefined,
+    pub const Packed = packed struct {
+        _unused: u8192 = undefined,
+    };
 };
