@@ -7,6 +7,9 @@ const config = @import("config.zig");
 const cpu_execution = @import("cpu/execution.zig");
 
 pub fn load_mmio_generic(comptime T: type, psx: *PSXState, offset: u29) T {
+    std.debug.assert(offset >= MMIO.Offset);
+    std.debug.assert(offset < MMIO.OffsetEnd);
+
     std.debug.assert(T != u8);
 
     switch (offset) {
@@ -18,11 +21,12 @@ pub fn load_mmio_generic(comptime T: type, psx: *PSXState, offset: u29) T {
         },
         else => @panic("Invalid IRQ MMIO load offset"),
     }
-
-    return 0;
 }
 
 pub fn store_mmio_generic(comptime T: type, psx: *PSXState, offset: u29, value: T) void {
+    std.debug.assert(offset >= MMIO.Offset);
+    std.debug.assert(offset < MMIO.OffsetEnd);
+
     std.debug.assert(T != u8);
 
     switch (offset) {

@@ -294,13 +294,13 @@ const MMIO_CDROM = packed struct {
     //
     // The problem applies only when manually polling the IRQ flags (an actual IRQ handler will get triggered when the flags get nonzero, and the flags will have stabilized once when the IRQ handler is reading them) (except, a combination of IRQ10h followed by IRQ3 can also have unstable LSBs within the IRQ handler).
     // The problem occurs only on older consoles (like LATE-PU-8), not on newer consoles (like PSone).
-    const InterruptFlagsR = packed struct {
+    const InterruptFlagsR = packed struct(u8) {
         response_received: u3, //   0-2  Response Received
         unknown: u1, //   3    Unknown (usually 0)
         command_start: u1, //   4    Command Start
         always_one: u3, //   5-7  Always 1 ;XXX "_"
     };
-    const InterruptFlagsW = packed struct {
+    const InterruptFlagsW = packed struct(u8) {
         b0_2_ack: u3, //   0-2   Write: 7=Acknowledge   ;INT1..INT7
         b3_ack_CLRBFEMPT: u1, //   3     Write: 1=Acknowledge   ;INT8  ;XXX CLRBFEMPT
         b4_CLRBFWRDY: u1, //   4     Write: 1=Acknowledge   ;INT10h;XXX CLRBFWRDY
