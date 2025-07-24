@@ -122,7 +122,7 @@ fn execute_instruction(psx: *PSXState, instruction: instructions.Instruction) vo
     }
 }
 
-fn load_reg(registers: Registers, register_name: cpu.RegisterName) u32 {
+fn load_reg_generic(load_type: type, registers: Registers, register_name: cpu.RegisterName) load_type {
     const value = switch (register_name) {
         .zero => 0,
         else => registers.r_in[@intFromEnum(register_name)],
@@ -132,18 +132,34 @@ fn load_reg(registers: Registers, register_name: cpu.RegisterName) u32 {
         std.debug.print("reg load 0x{x:0>8} from {}\n", .{ value, register_name });
     }
 
-    return value;
+    return @bitCast(value);
 }
 
-fn store_reg(registers: *Registers, register_name: cpu.RegisterName, value: u32) void {
+fn load_reg(registers: Registers, register_name: cpu.RegisterName) u32 {
+    return load_reg_generic(u32, registers, register_name);
+}
+
+fn load_reg_signed(registers: Registers, register_name: cpu.RegisterName) i32 {
+    return load_reg_generic(i32, registers, register_name);
+}
+
+fn store_reg_generic(registers: *Registers, register_name: cpu.RegisterName, value: anytype) void {
     if (config.enable_debug_print) {
         std.debug.print("reg store 0x{x:0>8} in {}\n", .{ value, register_name });
     }
 
     switch (register_name) {
         .zero => {},
-        else => registers.r_out[@intFromEnum(register_name)] = value,
+        else => registers.r_out[@intFromEnum(register_name)] = @bitCast(value),
     }
+}
+
+fn store_reg(registers: *Registers, register_name: cpu.RegisterName, value: u32) void {
+    store_reg_generic(registers, register_name, value);
+}
+
+fn store_reg_signed(registers: *Registers, register_name: cpu.RegisterName, value: i32) void {
+    store_reg_generic(registers, register_name, value);
 }
 
 fn execute_sll(psx: *PSXState, instruction: instructions.sll) void {
@@ -163,12 +179,12 @@ fn execute_srl(psx: *PSXState, instruction: instructions.srl) void {
 }
 
 fn execute_sra(psx: *PSXState, instruction: instructions.sra) void {
-    const value: i32 = @bitCast(load_reg(psx.cpu.regs, instruction.rt));
+    const value = load_reg_signed(psx.cpu.regs, instruction.rt);
 
     // Sign-extending
     const result = value >> instruction.shift_imm;
 
-    store_reg(&psx.cpu.regs, instruction.rd, @bitCast(result));
+    store_reg_signed(&psx.cpu.regs, instruction.rd, result);
 }
 
 fn execute_sllv(psx: *PSXState, instruction: instructions.sllv) void {
@@ -190,13 +206,13 @@ fn execute_srlv(psx: *PSXState, instruction: instructions.srlv) void {
 }
 
 fn execute_srav(psx: *PSXState, instruction: instructions.srav) void {
-    const value: i32 = @bitCast(load_reg(psx.cpu.regs, instruction.rt));
+    const value = load_reg_signed(psx.cpu.regs, instruction.rt);
     const shift: u5 = @truncate(load_reg(psx.cpu.regs, instruction.rs));
 
     // Sign-extending
     const result = value >> shift;
 
-    store_reg(&psx.cpu.regs, instruction.rd, @bitCast(result));
+    store_reg_signed(&psx.cpu.regs, instruction.rd, result);
 }
 
 fn execute_jr(psx: *PSXState, instruction: instructions.jr) void {
@@ -220,8 +236,8 @@ fn execute_break(psx: *PSXState) void {
 }
 
 fn execute_mult(psx: *PSXState, instruction: instructions.mult) void {
-    const a: i64 = @as(i32, @bitCast(load_reg(psx.cpu.regs, instruction.rs)));
-    const b: i64 = @as(i32, @bitCast(load_reg(psx.cpu.regs, instruction.rt)));
+    const a: i64 = load_reg_signed(psx.cpu.regs, instruction.rs);
+    const b: i64 = load_reg_signed(psx.cpu.regs, instruction.rt);
 
     const result: u64 = @bitCast(a * b);
 
@@ -242,7 +258,7 @@ fn execute_multu(psx: *PSXState, instruction: instructions.multu) void {
 fn execute_div(psx: *PSXState, instruction: instructions.div) void {
     const numerator_u32 = load_reg(psx.cpu.regs, instruction.rs);
     const numerator: i32 = @bitCast(numerator_u32);
-    const divisor: i32 = @bitCast(load_reg(psx.cpu.regs, instruction.rt));
+    const divisor = load_reg_signed(psx.cpu.regs, instruction.rt);
 
     if (divisor == 0) {
         // Division by zero
@@ -273,15 +289,15 @@ fn execute_divu(psx: *PSXState, instruction: instructions.divu) void {
 }
 
 fn execute_add(psx: *PSXState, instruction: instructions.add) void {
-    const value_s: i32 = @bitCast(load_reg(psx.cpu.regs, instruction.rs));
-    const value_t: i32 = @bitCast(load_reg(psx.cpu.regs, instruction.rt));
+    const value_s = load_reg_signed(psx.cpu.regs, instruction.rs);
+    const value_t = load_reg_signed(psx.cpu.regs, instruction.rt);
 
     const result, const overflow = @addWithOverflow(value_s, value_t);
 
     if (overflow == 1) {
         execute_exception(psx, .Ov);
     } else {
-        store_reg(&psx.cpu.regs, instruction.rd, @bitCast(result));
+        store_reg_signed(&psx.cpu.regs, instruction.rd, result);
     }
 }
 
@@ -295,15 +311,15 @@ fn execute_addu(psx: *PSXState, instruction: instructions.addu) void {
 }
 
 fn execute_sub(psx: *PSXState, instruction: instructions.sub) void {
-    const value_s: i32 = @bitCast(load_reg(psx.cpu.regs, instruction.rs));
-    const value_t: i32 = @bitCast(load_reg(psx.cpu.regs, instruction.rt));
+    const value_s = load_reg_signed(psx.cpu.regs, instruction.rs);
+    const value_t = load_reg_signed(psx.cpu.regs, instruction.rt);
 
     const result, const overflow = @subWithOverflow(value_s, value_t);
 
     if (overflow == 1) {
         execute_exception(psx, .Ov);
     } else {
-        store_reg(&psx.cpu.regs, instruction.rd, @bitCast(result));
+        store_reg_signed(&psx.cpu.regs, instruction.rd, result);
     }
 }
 
@@ -345,8 +361,8 @@ fn execute_nor(psx: *PSXState, instruction: instructions.nor) void {
 }
 
 fn execute_slt(psx: *PSXState, instruction: instructions.slt) void {
-    const value_s: i32 = @bitCast(load_reg(psx.cpu.regs, instruction.rs));
-    const value_t: i32 = @bitCast(load_reg(psx.cpu.regs, instruction.rt));
+    const value_s = load_reg_signed(psx.cpu.regs, instruction.rs);
+    const value_t = load_reg_signed(psx.cpu.regs, instruction.rt);
 
     const result: u32 = if (value_s < value_t) 1 else 0;
 
@@ -363,7 +379,7 @@ fn execute_sltu(psx: *PSXState, instruction: instructions.sltu) void {
 }
 
 fn execute_b_cond_z(psx: *PSXState, instruction: instructions.b_cond_z) void {
-    const value_s: i32 = @bitCast(load_reg(psx.cpu.regs, instruction.rs));
+    const value_s = load_reg_signed(psx.cpu.regs, instruction.rs);
 
     var test_value = value_s < 0;
 
@@ -410,7 +426,7 @@ fn execute_bne(psx: *PSXState, instruction: instructions.bne) void {
 }
 
 fn execute_blez(psx: *PSXState, instruction: instructions.blez) void {
-    const value_s: i32 = @bitCast(load_reg(psx.cpu.regs, instruction.rs));
+    const value_s = load_reg_signed(psx.cpu.regs, instruction.rs);
 
     if (value_s <= 0) {
         execute_generic_branch(psx, instruction.rel_offset);
@@ -418,7 +434,7 @@ fn execute_blez(psx: *PSXState, instruction: instructions.blez) void {
 }
 
 fn execute_bgtz(psx: *PSXState, instruction: instructions.bgtz) void {
-    const value_s: i32 = @bitCast(load_reg(psx.cpu.regs, instruction.rs));
+    const value_s = load_reg_signed(psx.cpu.regs, instruction.rs);
 
     if (value_s > 0) {
         execute_generic_branch(psx, instruction.rel_offset);
@@ -490,7 +506,7 @@ fn execute_bcn(psx: *PSXState, instruction: instructions.bcn) void {
 }
 
 fn execute_addi(psx: *PSXState, instruction: instructions.addi) void {
-    const value_s: i32 = @bitCast(load_reg(psx.cpu.regs, instruction.rs));
+    const value_s = load_reg_signed(psx.cpu.regs, instruction.rs);
     const value_imm: i32 = instruction.imm_i16;
 
     const result, const overflow = @addWithOverflow(value_s, value_imm);
@@ -498,7 +514,7 @@ fn execute_addi(psx: *PSXState, instruction: instructions.addi) void {
     if (overflow == 1) {
         execute_exception(psx, .Ov);
     } else {
-        store_reg(&psx.cpu.regs, instruction.rt, @bitCast(result));
+        store_reg_signed(&psx.cpu.regs, instruction.rt, result);
     }
 }
 
@@ -511,7 +527,7 @@ fn execute_addiu(psx: *PSXState, instruction: instructions.addiu) void {
 }
 
 fn execute_slti(psx: *PSXState, instruction: instructions.slti) void {
-    const value_s: i32 = @bitCast(load_reg(psx.cpu.regs, instruction.rs));
+    const value_s = load_reg_signed(psx.cpu.regs, instruction.rs);
 
     const result: u32 = if (value_s < instruction.imm_i16) 1 else 0;
 
