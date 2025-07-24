@@ -28,8 +28,10 @@ pub const Registers = struct {
     r_out: [32]u32 = undefined, // FIXME does it have an initial value?
     hi: u32 = undefined, // FIXME does it have an initial value?
     lo: u32 = undefined, // FIXME does it have an initial value?
+    bad_vaddr: u32 = undefined, // FIXME does it have an initial value?
     sr: SystemRegister = undefined, // FIXME does it have an initial value?
     cause: CauseRegister = undefined, // FIXME does it have an initial value?
+
     pending_load: ?struct {
         register: RegisterName,
         value: u32,
@@ -50,6 +52,7 @@ pub const Registers = struct {
         try writer.writeInt(@TypeOf(self.hi), self.hi, .little);
         try writer.writeInt(@TypeOf(self.lo), self.lo, .little);
 
+        try writer.writeInt(@TypeOf(self.bad_vaddr), self.bad_vaddr, .little);
         try writer.writeStruct(self.sr);
         try writer.writeStruct(self.cause);
 
@@ -80,6 +83,7 @@ pub const Registers = struct {
         self.hi = try reader.readInt(@TypeOf(self.hi), .little);
         self.lo = try reader.readInt(@TypeOf(self.lo), .little);
 
+        self.bad_vaddr = try reader.readInt(@TypeOf(self.bad_vaddr), .little);
         self.sr = try reader.readStruct(@TypeOf(self.sr));
         self.cause = try reader.readStruct(@TypeOf(self.cause));
 

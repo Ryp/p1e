@@ -17,7 +17,7 @@ pub fn step(psx: *PSXState) void {
     psx.cpu.regs.current_instruction_pc = psx.cpu.regs.pc;
 
     if (psx.cpu.regs.pc % 4 != 0) {
-        execute_exception(psx, .AdEL);
+        execute_exception_bad_address(psx, .AdEL, psx.cpu.regs.pc);
         return;
     }
 
@@ -26,11 +26,7 @@ pub fn step(psx: *PSXState) void {
     psx.cpu.regs.pc = psx.cpu.regs.next_pc;
     psx.cpu.regs.next_pc +%= 4;
 
-    // Execute any pending memory loads
-    if (psx.cpu.regs.pending_load) |pending_load| {
-        store_reg(&psx.cpu.regs, pending_load.register, pending_load.value);
-        psx.cpu.regs.pending_load = null;
-    }
+    execute_delay_load(psx);
 
     const instruction = instructions.decode_instruction(op_code);
 
@@ -277,15 +273,15 @@ fn execute_divu(psx: *PSXState, instruction: instructions.divu) void {
 }
 
 fn execute_add(psx: *PSXState, instruction: instructions.add) void {
-    const value_s = load_reg(psx.cpu.regs, instruction.rs);
-    const value_t = load_reg(psx.cpu.regs, instruction.rt);
+    const value_s: i32 = @bitCast(load_reg(psx.cpu.regs, instruction.rs));
+    const value_t: i32 = @bitCast(load_reg(psx.cpu.regs, instruction.rt));
 
-    const result, const overflow = execute_generic_add_with_overflow(value_s, @bitCast(value_t));
+    const result, const overflow = @addWithOverflow(value_s, value_t);
 
-    if (overflow) {
+    if (overflow == 1) {
         execute_exception(psx, .Ov);
     } else {
-        store_reg(&psx.cpu.regs, instruction.rd, result);
+        store_reg(&psx.cpu.regs, instruction.rd, @bitCast(result));
     }
 }
 
@@ -299,15 +295,15 @@ fn execute_addu(psx: *PSXState, instruction: instructions.addu) void {
 }
 
 fn execute_sub(psx: *PSXState, instruction: instructions.sub) void {
-    const value_s = load_reg(psx.cpu.regs, instruction.rs);
-    const value_t = load_reg(psx.cpu.regs, instruction.rt);
+    const value_s: i32 = @bitCast(load_reg(psx.cpu.regs, instruction.rs));
+    const value_t: i32 = @bitCast(load_reg(psx.cpu.regs, instruction.rt));
 
-    const result, const overflow = execute_generic_sub_with_overflow(value_s, @bitCast(value_t));
+    const result, const overflow = @subWithOverflow(value_s, value_t);
 
-    if (overflow) {
+    if (overflow == 1) {
         execute_exception(psx, .Ov);
     } else {
-        store_reg(&psx.cpu.regs, instruction.rd, result);
+        store_reg(&psx.cpu.regs, instruction.rd, @bitCast(result));
     }
 }
 
@@ -433,11 +429,14 @@ fn execute_mfc(psx: *PSXState, instruction: instructions.mtc) void {
     std.debug.assert(instruction.cop_index == 0);
 
     const value: u32 = switch (instruction.target) {
-        .BPC, .BDA, .JUMPDEST, .DCIC, .BadVaddr, .BDAM, .BPCM => {
+        .BPC, .BDA, .BDAM, .BPCM => {
             std.debug.print("mfc0 target read ignored: {}\n", .{instruction.target});
 
             unreachable; // These are not implemented yet
         },
+        .DCIC => 0, // FIXME
+        .JUMPDEST => 0, // FIXME
+        .BadVaddr => psx.cpu.regs.bad_vaddr,
         .SR => @bitCast(psx.cpu.regs.sr),
         .CAUSE => @bitCast(psx.cpu.regs.cause),
         .EPC => psx.cpu.regs.epc,
@@ -491,14 +490,15 @@ fn execute_bcn(psx: *PSXState, instruction: instructions.bcn) void {
 }
 
 fn execute_addi(psx: *PSXState, instruction: instructions.addi) void {
-    const value_s = load_reg(psx.cpu.regs, instruction.rs);
+    const value_s: i32 = @bitCast(load_reg(psx.cpu.regs, instruction.rs));
+    const value_imm: i32 = instruction.imm_i16;
 
-    const result, const overflow = execute_generic_add_with_overflow(value_s, instruction.imm_i16);
+    const result, const overflow = @addWithOverflow(value_s, value_imm);
 
-    if (overflow) {
+    if (overflow == 1) {
         execute_exception(psx, .Ov);
     } else {
-        store_reg(&psx.cpu.regs, instruction.rt, result);
+        store_reg(&psx.cpu.regs, instruction.rt, @bitCast(result));
     }
 }
 
@@ -520,8 +520,9 @@ fn execute_slti(psx: *PSXState, instruction: instructions.slti) void {
 
 fn execute_sltiu(psx: *PSXState, instruction: instructions.sltiu) void {
     const value_s = load_reg(psx.cpu.regs, instruction.rs);
+    const imm_se: u32 = @bitCast(@as(i32, instruction.imm_i16)); // Super weird behavior
 
-    const result: u32 = if (value_s < instruction.imm_i16) 1 else 0;
+    const result: u32 = if (value_s < imm_se) 1 else 0;
 
     store_reg(&psx.cpu.regs, instruction.rt, result);
 }
@@ -579,7 +580,7 @@ fn execute_lh(psx: *PSXState, instruction: instructions.lh) void {
 
         psx.cpu.regs.pending_load = .{ .register = instruction.rt, .value = @bitCast(value_sign_extended) };
     } else {
-        execute_exception(psx, .AdEL);
+        execute_exception_bad_address(psx, .AdEL, address);
     }
 }
 
@@ -592,7 +593,7 @@ fn execute_lhu(psx: *PSXState, instruction: instructions.lhu) void {
 
         psx.cpu.regs.pending_load = .{ .register = instruction.rt, .value = value };
     } else {
-        execute_exception(psx, .AdEL);
+        execute_exception_bad_address(psx, .AdEL, address);
     }
 }
 
@@ -605,7 +606,7 @@ fn execute_lw(psx: *PSXState, instruction: instructions.lw) void {
 
         psx.cpu.regs.pending_load = .{ .register = instruction.rt, .value = value };
     } else {
-        execute_exception(psx, .AdEL);
+        execute_exception_bad_address(psx, .AdEL, address);
     }
 }
 
@@ -673,7 +674,7 @@ fn execute_sh(psx: *PSXState, instruction: instructions.sh) void {
     if (address % 2 == 0) {
         mmio.store_u16(psx, address, @truncate(value));
     } else {
-        execute_exception(psx, .AdES);
+        execute_exception_bad_address(psx, .AdES, address);
     }
 }
 
@@ -686,7 +687,7 @@ fn execute_sw(psx: *PSXState, instruction: instructions.sw) void {
     if (address % 4 == 0) {
         mmio.store_u32(psx, address, value);
     } else {
-        execute_exception(psx, .AdES);
+        execute_exception_bad_address(psx, .AdES, address);
     }
 }
 
@@ -779,36 +780,15 @@ fn execute_swc(psx: *PSXState, instruction: instructions.swc) void {
     }
 }
 
-fn execute_generic_add_with_overflow(lhs: u32, rhs: i32) struct { u32, bool } {
-    var result: u32 = undefined;
-    var overflow: u1 = undefined;
-
-    if (rhs >= 0) {
-        // NOTE: using two's-complement to ignore signedness
-        result, overflow = @addWithOverflow(lhs, @as(u32, @intCast(rhs)));
-    } else {
-        result, overflow = @subWithOverflow(lhs, @as(u32, @intCast(-rhs)));
-    }
-
-    return .{ result, overflow != 0 };
-}
-
-fn execute_generic_sub_with_overflow(lhs: u32, rhs: i32) struct { u32, bool } {
-    var result: u32 = undefined;
-    var overflow: u1 = undefined;
-
-    if (rhs >= 0) {
-        // NOTE: using two's-complement to ignore signedness
-        result, overflow = @subWithOverflow(lhs, @as(u32, @intCast(rhs)));
-    } else {
-        result, overflow = @addWithOverflow(lhs, @as(u32, @intCast(-rhs)));
-    }
-
-    return .{ result, overflow != 0 };
-}
-
 fn execute_reserved_instruction(psx: *PSXState) void {
     execute_exception(psx, .RI);
+}
+
+fn execute_delay_load(psx: *PSXState) void {
+    if (psx.cpu.regs.pending_load) |pending_load| {
+        store_reg(&psx.cpu.regs, pending_load.register, pending_load.value);
+        psx.cpu.regs.pending_load = null;
+    }
 }
 
 fn execute_generic_jump(psx: *PSXState, address: u32) void {
@@ -845,6 +825,13 @@ pub fn request_hardware_interrupt(psx: *PSXState, interrupt: HardwareInterruptTy
     psx.mmio.irq.status.raw |= interrupt_bit;
 
     update_hardware_interrupt_line(psx);
+}
+
+fn execute_exception_bad_address(psx: *PSXState, cause: cpu.ExceptionCause, address: u32) void {
+    std.debug.assert(cause == .AdES or cause == .AdEL);
+    psx.cpu.regs.bad_vaddr = address;
+
+    execute_exception(psx, cause);
 }
 
 fn execute_exception(psx: *PSXState, cause: cpu.ExceptionCause) void {
