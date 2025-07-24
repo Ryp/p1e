@@ -634,9 +634,9 @@ fn execute_lwl(psx: *PSXState, instruction: instructions.lwl) void {
     const load_value = mmio.load_u32(psx, address_aligned);
 
     const previous_value = if (psx.cpu.regs.pending_load) |pending_load|
-        if (pending_load.is_unaligned) pending_load.value else 0
+        if (pending_load.is_unaligned) pending_load.value else @panic("lwr with pending load not unaligned")
     else
-        0;
+        load_reg(psx.cpu.regs, instruction.rt);
 
     const result = switch (address % 4) {
         0 => previous_value & 0x00_ff_ff_ff | load_value << 24,
@@ -657,9 +657,9 @@ fn execute_lwr(psx: *PSXState, instruction: instructions.lwr) void {
     const load_value = mmio.load_u32(psx, address_aligned);
 
     const previous_value = if (psx.cpu.regs.pending_load) |pending_load|
-        if (pending_load.is_unaligned) pending_load.value else 0
+        if (pending_load.is_unaligned) pending_load.value else @panic("lwr with pending load not unaligned")
     else
-        0;
+        load_reg(psx.cpu.regs, instruction.rt);
 
     const result = switch (address % 4) {
         0 => previous_value & 0x00_00_00_00 | load_value >> 0,
