@@ -386,11 +386,11 @@ fn execute_b_cond_z(psx: *PSXState, instruction: instructions.b_cond_z) void {
     // Flip test if needed
     test_value = test_value != instruction.test_greater;
 
-    if (test_value) {
-        if (instruction.link) {
-            store_reg(&psx.cpu.regs, cpu.RegisterName.ra, psx.cpu.regs.next_pc);
-        }
+    if (instruction.link) {
+        store_reg(&psx.cpu.regs, cpu.RegisterName.ra, psx.cpu.regs.next_pc);
+    }
 
+    if (test_value) {
         execute_generic_branch(psx, instruction.rel_offset);
     }
 }

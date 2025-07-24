@@ -493,7 +493,7 @@ fn decode_b_cond_z(op_u32: u32) b_cond_z {
     };
 
     const op: Helper = @bitCast(op_u32);
-    return .{ .rs = op.rs, .test_greater = op.test_greater == 1, .link = op.link == 1, .rel_offset = @bitCast(@as(u18, op.imm16) << 2) };
+    return .{ .rs = op.rs, .test_greater = op.test_greater == 1, .link = op.link == 1 and op._unused == 0, .rel_offset = @bitCast(@as(u18, op.imm16) << 2) };
 }
 
 pub const generic_j = struct {
