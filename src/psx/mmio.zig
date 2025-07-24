@@ -82,6 +82,25 @@ fn load_generic(comptime T: type, psx: *PSXState, address: PSXAddress) T {
                 },
                 MMIO_Offset...MMIO_OffsetEnd - 1 => |offset| {
                     switch (offset) {
+                        MC1_MMIO.Offset...MC1_MMIO.OffsetEnd - 1 => {
+                            std.debug.print("FIXME MC1 load ignored at offset {x}\n", .{offset});
+                            @panic("Invalid address");
+                        },
+                        IOPorts_MMIO.Offset...IOPorts_MMIO.OffsetEnd - 1 => {
+                            std.debug.print("FIXME IOPorts load ignored at offset {x}\n", .{offset});
+
+                            if (offset == IOPorts_MMIO.Joy_RX_TX_Offset) {
+                                return 0; // FIXME
+                            } else if (offset == IOPorts_MMIO.Joy_Ctrl_Offset) {
+                                return 0; // FIXME
+                            }
+
+                            @panic("Invalid address");
+                        },
+                        MC2_MMIO.Offset...MC2_MMIO.OffsetEnd - 1 => {
+                            std.debug.print("FIXME MC2 load ignored at offset {x}\n", .{offset});
+                            @panic("Invalid address");
+                        },
                         irq.MMIO.Offset...irq.MMIO.OffsetEnd - 1 => {
                             switch (T) {
                                 u16 => return irq.load_mmio_generic(u16, psx, offset),
@@ -135,6 +154,7 @@ fn load_generic(comptime T: type, psx: *PSXState, address: PSXAddress) T {
                     return std.mem.readInt(T, type_slice[0..type_bytes], .little);
                 },
                 else => {
+                    std.debug.print("address = {x}\n", .{address.offset});
                     @panic("Invalid address");
                 },
             }
@@ -188,21 +208,14 @@ fn store_generic(comptime T: type, psx: *PSXState, address: PSXAddress, value: T
                 },
                 MMIO_Offset...MMIO_OffsetEnd - 1 => |offset| {
                     switch (offset) {
-                        MMIO_Expansion1BaseAddress_Offset,
-                        MMIO_Expansion2BaseAddress_Offset,
-                        MMIO_0x1f801008_Offset,
-                        MMIO_0x1f801010_Offset,
-                        MMIO_0x1f80100c_Offset,
-                        MMIO_0x1f801014_Offset,
-                        MMIO_0x1f801018_Offset,
-                        MMIO_0x1f80101c_Offset,
-                        MMIO_0x1f801020_Offset,
-                        MMIO_0x1f801060_Offset,
-                        MMIO_UnknownDebug_Offset,
-                        => {
-                            if (config.enable_debug_print) {
-                                std.debug.print("FIXME store ignored\n", .{});
-                            }
+                        MC1_MMIO.Offset...MC1_MMIO.OffsetEnd - 1 => {
+                            std.debug.print("FIXME MC1 store ignored at offset {x}\n", .{offset});
+                        },
+                        IOPorts_MMIO.Offset...IOPorts_MMIO.OffsetEnd - 1 => {
+                            std.debug.print("FIXME IOPorts store ignored at offset {x}\n", .{offset});
+                        },
+                        MC2_MMIO.Offset...MC2_MMIO.OffsetEnd - 1 => {
+                            std.debug.print("FIXME MC2 store ignored at offset {x}\n", .{offset});
                         },
                         irq.MMIO.Offset...irq.MMIO.OffsetEnd - 1 => {
                             switch (T) {
@@ -232,6 +245,11 @@ fn store_generic(comptime T: type, psx: *PSXState, address: PSXAddress, value: T
                         spu.MMIO.Offset...spu.MMIO.OffsetEnd - 1 => {
                             spu.store_mmio_generic(T, psx, offset, value);
                         },
+                        Expansion2_MMIO.UnknownDebug_Offset => {
+                            if (config.enable_debug_print) {
+                                std.debug.print("FIXME store ignored\n", .{});
+                            }
+                        },
                         else => {
                             std.debug.print("address = {x}\n", .{offset});
                             @panic("Invalid address");
@@ -239,7 +257,16 @@ fn store_generic(comptime T: type, psx: *PSXState, address: PSXAddress, value: T
                     }
                 },
                 BIOS_Offset...BIOS_OffsetEnd - 1 => unreachable, // This should be read-only
-                else => unreachable,
+                Scratchpad_Offset...Scratchpad_OffsetEnd - 1 => |offset| {
+                    std.debug.assert(address.mapping != .Kseg1);
+                    const local_offset = offset - Scratchpad_Offset;
+                    const type_slice = psx.scratchpad[local_offset..];
+                    std.mem.writeInt(T, type_slice[0..type_bytes], value, .little);
+                },
+                else => {
+                    std.debug.print("address = {x}\n", .{address.offset});
+                    unreachable; // This should be read-only
+                },
             }
         },
         .Kseg2 => {
@@ -309,6 +336,9 @@ pub const MC1_MMIO = struct {
         std.debug.assert(@sizeOf(Packed) == SizeBytes);
     }
 
+    const MMIO_Expansion1BaseAddress_Offset = 0x1f801000;
+    const MMIO_Expansion2BaseAddress_Offset = 0x1f801004;
+
     pub const Packed = packed struct {
         _unused: u512 = undefined,
     };
@@ -323,6 +353,9 @@ pub const IOPorts_MMIO = struct {
     comptime {
         std.debug.assert(@sizeOf(Packed) == SizeBytes);
     }
+
+    pub const Joy_RX_TX_Offset = 0x1f801040;
+    pub const Joy_Ctrl_Offset = 0x1f80104a;
 
     pub const Packed = packed struct {
         _unused: u256 = undefined,
@@ -370,31 +403,14 @@ pub const Expansion2_MMIO = struct {
         std.debug.assert(@sizeOf(Packed) == SizeBytes);
     }
 
+    pub const UnknownDebug_Offset = 0x1f802041;
+
     pub const Packed = packed struct {
         // FIXME Abusing the compiler for 1 bit here, one more and we hit the limit.
         // Really it should be 32768.
         _unused: u32767 = undefined,
     };
 };
-
-// Known offsets, see https://psx-spx.consoledev.net/iomap/
-// for more details.
-const MMIO_Expansion1BaseAddress_Offset = 0x1f801000;
-const MMIO_Expansion2BaseAddress_Offset = 0x1f801004;
-
-const MMIO_0x1f801008_Offset = 0x1f801008;
-const MMIO_0x1f80100c_Offset = 0x1f80100c;
-const MMIO_0x1f801010_Offset = 0x1f801010;
-const MMIO_0x1f801014_Offset = 0x1f801014;
-const MMIO_0x1f801018_Offset = 0x1f801018;
-const MMIO_0x1f80101c_Offset = 0x1f80101c;
-const MMIO_0x1f801020_Offset = 0x1f801020;
-const MMIO_0x1f801060_Offset = 0x1f801060;
-
-const MMIO_MainVolume_Left = 0x1f801d80;
-const MMIO_MainVolume_Right = 0x1f801d82;
-
-const MMIO_UnknownDebug_Offset = 0x1f802041;
 
 comptime {
     // Assert that the layout of the MMIO struct is correct, otherwise all hell breaks loose
