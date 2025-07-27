@@ -27,6 +27,19 @@ pub fn step(psx: *PSXState) void {
         };
     }
 
+    const address_typed: mmio.PSXAddress = @bitCast(psx.cpu.regs.pc);
+    const t1_value = load_reg(psx.cpu.regs, .t1);
+
+    if ((address_typed.offset == 0xA0 and t1_value == 0x3C) or (address_typed.offset == 0xB0 and t1_value == 0x3D)) {
+        const char: u8 = @truncate(load_reg(psx.cpu.regs, .a0));
+
+        // Print on stdout
+        const outw = std.io.getStdOut().writer();
+        outw.print("{c}", .{char}) catch |err| {
+            std.debug.print("Error writing to stdout: {}\n", .{err});
+        };
+    }
+
     psx.cpu.regs.current_instruction_pc = psx.cpu.regs.pc;
 
     if (psx.cpu.regs.pc % 4 != 0) {
