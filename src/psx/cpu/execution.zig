@@ -7,12 +7,25 @@ const cpu = @import("state.zig");
 const Registers = cpu.Registers;
 
 const mmio = @import("../mmio.zig");
+const exe_sideloading = @import("../exe_sideloading.zig");
 
 const instructions = @import("instructions.zig");
 const debug = @import("debug.zig");
 
 pub fn step(psx: *PSXState) void {
     defer psx.step_index += 1;
+
+    if (psx.cpu.regs.pc == exe_sideloading.DefaultSideLoadingPC) {
+        var exe_file = if (std.fs.cwd().openFile("../psxtest_cpu.exe", .{})) |f| f else |err| {
+            std.debug.print("Failed to open exe file: {}\n", .{err});
+            return;
+        };
+        defer exe_file.close();
+
+        exe_sideloading.load(psx, exe_file.reader()) catch |err| {
+            std.debug.print("Failed to load exe: {}\n", .{err});
+        };
+    }
 
     psx.cpu.regs.current_instruction_pc = psx.cpu.regs.pc;
 
