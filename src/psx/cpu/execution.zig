@@ -515,7 +515,10 @@ fn execute_mtc(psx: *PSXState, instruction: instructions.mtc) void {
             psx.cpu.regs.cause.interrupt_pending.software_irq1 = cause_new.interrupt_pending.software_irq1;
         },
         .EPC => unreachable,
-        _ => unreachable,
+        _ => {
+            std.debug.print("mtc0 target: {}\n", .{instruction.target});
+            unreachable;
+        },
     }
 }
 

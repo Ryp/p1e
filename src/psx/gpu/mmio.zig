@@ -16,7 +16,9 @@ pub fn load_mmio_u32(psx: *PSXState, offset: u29) u32 {
             const value = std.mem.readInt(u32, type_slice, .little);
 
             std.debug.assert(value == 0);
-            return value; // FIXME
+
+            std.debug.print("MMIO GPU READ: {x}\n", .{psx.gpu.gp_read_data});
+            return psx.gpu.gp_read_data; // FIXME
         },
         MMIO.GPUSTAT_Offset => {
             // Update read-only registers

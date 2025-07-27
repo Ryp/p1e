@@ -78,7 +78,7 @@ pub fn get_command_size_bytes(op_code: OpCode) usize {
 // E4h = 111 00100 GP0(E4h) - Set Drawing Area bottom right (X2,Y2)
 // E5h = 111 00101 GP0(E5h) - Set Drawing Offset (X,Y)
 // E6h = 111 00110 GP0(E6h) - Mask Bit Setting
-pub const OpCode = packed struct {
+pub const OpCode = packed struct(u8) {
     secondary: packed union {
         special: SpecialOpCode,
         draw_poly: DrawPolyOpCode,
@@ -139,7 +139,7 @@ const ModifierOpCode = enum(u5) {
 // 36h = 0011 0110b GP0(36h) - Shaded Textured three-point polygon, semi-transparent, tex-blend
 // 3Ch = 0011 1100b GP0(3Ch) - Shaded Textured four-point polygon, opaque, texture-blending
 // 3Eh = 0011 1110b GP0(3Eh) - Shaded Textured four-point polygon, semi-transparent, tex-blend
-const DrawPolyOpCode = packed struct {
+const DrawPolyOpCode = packed struct(u5) {
     raw_texture: bool, // Used when is_textured is set. 0 = texture blending, 1 = raw texture
     is_semi_transparent: bool,
     is_textured: bool,
@@ -172,7 +172,7 @@ const DrawPolyOpCode = packed struct {
 // 7Dh = 0111 1101b GP0(7Dh) - Textured Rectangle, 16x16, opaque, raw-texture
 // 7Eh = 0111 1110b GP0(7Eh) - Textured Rectangle, 16x16, semi-transparent, texture-blending
 // 7Fh = 0111 1111b GP0(7Fh) - Textured Rectangle, 16x16, semi-transparent, raw-texture
-const DrawRectOpCode = packed struct {
+const DrawRectOpCode = packed struct(u5) {
     raw_texture: bool, // Used when is_textured is set. 0 = texture blending, 1 = raw texture
     is_semi_transparent: bool,
     is_textured: bool,
@@ -193,7 +193,7 @@ const DrawRectOpCode = packed struct {
 // 52h = 0101 0010b GP0(52h) - Shaded line, semi-transparent
 // 58h = 0101 1000b GP0(58h) - Shaded Poly-line, opaque
 // 5Ah = 0101 1010b GP0(5Ah) - Shaded Poly-line, semi-transparent
-const DrawLineOpCode = packed struct {
+const DrawLineOpCode = packed struct(u5) {
     zero_b0: bool,
     is_semi_transparent: bool,
     zero_b1: bool,
@@ -201,12 +201,12 @@ const DrawLineOpCode = packed struct {
     is_shaded: bool,
 };
 
-pub const Noop = packed struct {
+pub const Noop = packed struct(u32) {
     unknown_b0_23: u24,
     op_code: OpCode,
 };
 
-pub const ClearTextureCache = packed struct {
+pub const ClearTextureCache = packed struct(u32) {
     zero_b0_23: u24,
     op_code: OpCode,
 };
@@ -343,6 +343,34 @@ pub const DrawQuadShadedTextured = packed struct {
     v4_pos: PackedVertexPos,
     v4_texcoord: PackedTexCoord,
     zero_v4_b16_31: u16,
+};
+
+pub const DrawRectMonochrome = packed struct(u64) {
+    color: PackedColor,
+    op_code: OpCode,
+    position_top_left: PackedVertexPos,
+};
+
+pub const DrawRectMonochromeVariable = packed struct(u96) {
+    color: PackedColor,
+    op_code: OpCode,
+    position_top_left: PackedVertexPos,
+    size: PackedVertexPos,
+};
+
+pub const DrawRectTextured = packed struct(u96) {
+    todo: u24,
+    op_code: OpCode,
+    w1: u32,
+    w2: u32,
+};
+
+pub const DrawRectTexturedVariable = packed struct(u128) {
+    todo: u24,
+    op_code: OpCode,
+    w1: u32,
+    w2: u32,
+    w3: u32,
 };
 
 pub const PackedVertexPos = packed struct {

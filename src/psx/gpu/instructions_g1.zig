@@ -10,6 +10,7 @@ pub const OpCode = enum(u8) {
     SetDisplayHorizontalRange = 0x06,
     SetDisplayVerticalRange = 0x07,
     SetDisplayMode = 0x08,
+    GetGPUInfo = 0x10,
     _,
 };
 
@@ -60,6 +61,18 @@ const Command = union(OpCode) {
         reverse_flag: u1,
         zero_b8_23: u16,
     },
+    GetGPUInfo: packed struct(u24) {
+        op_code: enum(u4) {
+            TextureWindowSetting = 2, //02h = Read Texture Window setting  ;GP0(E2h) ;20bit/MSBs=Nothing
+            DrawAreaTopLeft = 3, //     03h = Read Draw area top left      ;GP0(E3h) ;20bit/MSBs=Nothing
+            DrawAreaBottomRight = 4, // 04h = Read Draw area bottom right  ;GP0(E4h) ;20bit/MSBs=Nothing
+            DrawOffset = 5, //          05h = Read Draw offset             ;GP0(E5h) ;22bit
+            GPUType = 7, //         07h = Read GPU Type (usually 2)    ;see "GPU Versions" chapter
+            Unknown = 8, //                 08h = Unknown (Returns 00000000h) (lightgun on some GPUs?)
+            _,
+        },
+        unused_b4_23: u20,
+    },
 };
 
 pub fn make_command(raw: CommandRaw) Command {
@@ -73,6 +86,11 @@ pub fn make_command(raw: CommandRaw) Command {
         .SetDisplayHorizontalRange => .{ .SetDisplayHorizontalRange = @bitCast(raw.payload) },
         .SetDisplayVerticalRange => .{ .SetDisplayVerticalRange = @bitCast(raw.payload) },
         .SetDisplayMode => .{ .SetDisplayMode = @bitCast(raw.payload) },
-        _ => unreachable,
+        .GetGPUInfo => .{ .GetGPUInfo = @bitCast(raw.payload) },
+        _ => {
+            const std = @import("std");
+            std.debug.print("Unknown GPU command: {x}\n", .{raw.op_code});
+            unreachable;
+        },
     };
 }

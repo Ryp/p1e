@@ -336,7 +336,57 @@ fn execute_gp0_command(psx: *PSXState, op_code: g0.OpCode, command_bytes: []u8) 
         },
         .DrawRect => {
             std.debug.assert(!psx.gpu.pending_draw);
-            unreachable;
+            const draw_rect = op_code.secondary.draw_rect;
+
+            switch (draw_rect.size) {
+                ._1x1, ._8x8, ._16x16 => |size| {
+                    std.debug.assert(!draw_rect.raw_texture);
+                    std.debug.assert(!draw_rect.is_semi_transparent); // FIXME
+
+                    const px_size: u5 = switch (size) {
+                        ._1x1 => 1,
+                        ._8x8 => 8,
+                        ._16x16 => 16,
+                        .Variable => unreachable,
+                    };
+
+                    if (draw_rect.is_textured) {
+                        const rect_textured = std.mem.bytesAsValue(g0.DrawRectTextured, command_bytes);
+                        std.debug.print("DrawRectTextured: {any}\n", .{rect_textured});
+                        unreachable;
+                    } else {
+                        const rect_monochrome = std.mem.bytesAsValue(g0.DrawRectMonochrome, command_bytes);
+                        std.debug.print("DrawRectMonochrome: {any} and {any}\n", .{ draw_rect, rect_monochrome });
+
+                        const tl = rect_monochrome.position_top_left;
+
+                        push_packed_quad_color(psx, op_code, .{
+                            .position = .{ .x = tl.x + 0, .y = tl.y + 0 },
+                            .color = rect_monochrome.color,
+                        }, .{
+                            .position = .{ .x = tl.x + px_size, .y = tl.y + 0 },
+                            .color = rect_monochrome.color,
+                        }, .{
+                            .position = .{ .x = tl.x + 0, .y = tl.y + px_size },
+                            .color = rect_monochrome.color,
+                        }, .{
+                            .position = .{ .x = tl.x + px_size, .y = tl.y + px_size },
+                            .color = rect_monochrome.color,
+                        });
+                    }
+                },
+                .Variable => {
+                    if (draw_rect.is_textured) {
+                        const rect_monochrome_variable = std.mem.bytesAsValue(g0.DrawRectMonochromeVariable, command_bytes);
+                        std.debug.print("DrawRectMonochromeVariable: {any}\n", .{rect_monochrome_variable});
+                        unreachable;
+                    } else {
+                        const rect_textured_variable = std.mem.bytesAsValue(g0.DrawRectTexturedVariable, command_bytes);
+                        std.debug.print("DrawRectTexturedVariable: {any}\n", .{rect_textured_variable});
+                        unreachable;
+                    }
+                },
+            }
         },
         .CopyRectangleVRAMtoVRAM => {
             unreachable;
@@ -491,7 +541,18 @@ pub fn execute_gp1_command(psx: *PSXState, command_raw: g1.CommandRaw) void {
             std.debug.assert(display_mode.reverse_flag == 0);
             std.debug.assert(display_mode.zero_b8_23 == 0);
         },
-        else => unreachable,
+        .GetGPUInfo => |get_gpu_info| {
+            switch (get_gpu_info.op_code) {
+                .TextureWindowSetting => unreachable,
+                .DrawAreaTopLeft => unreachable,
+                .DrawAreaBottomRight => unreachable,
+                .DrawOffset => unreachable,
+                .GPUType => {
+                    psx.gpu.gp_read_data = state.GPUType;
+                },
+                else => unreachable,
+            }
+        },
     }
 }
 
@@ -520,6 +581,7 @@ fn execute_reset(psx: *PSXState) void {
 fn execute_reset_command_buffer(psx: *PSXState) void {
     psx.gpu.gp0_pending_command = null;
     psx.gpu.gp0_copy_mode = null;
+    psx.gpu.gp_read_data = 0; // FIXME
     // FIXME clear command FIFO
 
     reset_frame_data(psx);

@@ -41,6 +41,8 @@ pub const GPUState = struct {
         index_y: usize,
     } = null,
 
+    gp_read_data: u32 = 0, // FIXME
+
     pending_draw: bool = false, // Signals that the frame is ready to be drawn
 
     frame_index: u64 = 0,
@@ -68,13 +70,13 @@ pub const GPUState = struct {
 };
 
 pub fn create_gpu_state(allocator: std.mem.Allocator) !GPUState {
-    const vertex_buffer = try allocator.alloc(PhatVertex, 10000); // FIXME
+    const vertex_buffer = try allocator.alloc(PhatVertex, 1_000_000); // FIXME
     errdefer allocator.free(vertex_buffer);
 
-    const index_buffer = try allocator.alloc(u32, 10000); // FIXME
+    const index_buffer = try allocator.alloc(u32, 1_000_000); // FIXME
     errdefer allocator.free(index_buffer);
 
-    const draw_command_buffer = try allocator.alloc(DrawCommand, 10000); // FIXME
+    const draw_command_buffer = try allocator.alloc(DrawCommand, 1_000_000); // FIXME
     errdefer allocator.free(draw_command_buffer);
 
     return GPUState{
@@ -103,3 +105,27 @@ pub const DrawCommand = struct {
     index_offset: u32,
     index_count: u32,
 };
+
+// Summary of GPU Differences
+//
+//   Differences...                Old 160pin GPU          New 208pin GPU
+//   GPU Chip                      CXD8514Q                CXD8561Q/BQ/CQ/CXD9500Q
+//   Mainboard                     EARLY-PU-8 and below    LATE-PU-8 and up
+//   Memory Type                   Dual-ported VRAM        Normal DRAM
+//   GPUSTAT.13 when interlace=off always 0                always 1
+//   GPUSTAT.14                    always 0                reverseflag
+//   GPUSTAT.15                    always 0                texture_disable
+//   GP1(10h:index3..4)            19bit (1MB VRAM)        20bit (2MB VRAM)
+//   GP1(10h:index7)               N/A                     00000002h version
+//   GP1(10h:index8)               mirror of index0        00000000h zero
+//   GP1(10h:index9..F)            mirror of index1..7     N/A
+//   GP1(20h)                      whatever? used for detecting old gpu
+//   GP0(E1h).bit12/13             without x/y-flip        with x/y-flip
+//   GP0(03h)                      N/A (no stored in fifo) unknown/unused command
+//   Shaded Textures               ((color/8)*texel)/2     (color*texel)/16
+//   GP0(02h) FillVram             xpos.bit0-3=0Fh=bugged  xpos.bit0-3=ignored
+//   dma-to-vram: doesn't work with blksiz>10h (new gpu works with blksiz=8C0h!)
+//   dma-to-vram: MAYBE also needs extra software-handshake to confirm DMA done?
+//    320*224 pix = 11800h pix = 8C00h words
+//   GP0(80h) VramToVram           works                   Freeze on large moves?
+pub const GPUType = 0x00_00_00_02;
