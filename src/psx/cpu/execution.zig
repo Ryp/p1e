@@ -532,9 +532,17 @@ fn execute_mtc(psx: *PSXState, instruction: instructions.mtc) void {
 }
 
 fn execute_ctc(psx: *PSXState, instruction: instructions.ctc) void {
-    _ = psx;
-    _ = instruction;
-    unreachable;
+    const value = load_reg(psx.cpu.regs, instruction.cpu_rs);
+
+    switch (instruction.target) {
+        .cop0 => unreachable, // FIXME
+        .cop2 => |register_index| {
+            std.debug.print("ctc2 mv {x} to ctrl register {}\n", .{ value, register_index });
+            psx.gte.ctrl_regs[register_index] = value;
+        }, // FIXME
+        .cop1 => @panic("ctc1 is not valid"),
+        .cop3 => @panic("ctc3 is not valid"),
+    }
 }
 
 fn execute_bcn(psx: *PSXState, instruction: instructions.bcn) void {
