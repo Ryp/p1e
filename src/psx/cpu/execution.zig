@@ -468,25 +468,29 @@ fn execute_bgtz(psx: *PSXState, instruction: instructions.bgtz) void {
 }
 
 fn execute_mfc(psx: *PSXState, instruction: instructions.mtc) void {
-    std.debug.assert(instruction.cop_index == 0);
+    switch (instruction.target) {
+        .cop0 => |cop0_target| {
+            const value: u32 = switch (cop0_target) {
+                .BPC, .BDA, .BDAM, .BPCM => {
+                    std.debug.print("mfc0 target read ignored: {}\n", .{instruction.target});
+                    unreachable; // FIXME These are not implemented yet
+                },
+                .DCIC => 0, // FIXME
+                .JUMPDEST => 0, // FIXME
+                .BadVaddr => psx.cpu.regs.bad_vaddr,
+                .SR => @bitCast(psx.cpu.regs.sr),
+                .CAUSE => @bitCast(psx.cpu.regs.cause),
+                .EPC => psx.cpu.regs.epc,
+                .PRID => cpu.CPU_PRID,
+                _ => unreachable,
+            };
 
-    const value: u32 = switch (instruction.target) {
-        .BPC, .BDA, .BDAM, .BPCM => {
-            std.debug.print("mfc0 target read ignored: {}\n", .{instruction.target});
-
-            unreachable; // These are not implemented yet
+            psx.cpu.regs.pending_load = .{ .register = instruction.cpu_rs, .value = @bitCast(value) };
         },
-        .DCIC => 0, // FIXME
-        .JUMPDEST => 0, // FIXME
-        .BadVaddr => psx.cpu.regs.bad_vaddr,
-        .SR => @bitCast(psx.cpu.regs.sr),
-        .CAUSE => @bitCast(psx.cpu.regs.cause),
-        .EPC => psx.cpu.regs.epc,
-        .PRID => cpu.CPU_PRID,
-        _ => unreachable,
-    };
-
-    psx.cpu.regs.pending_load = .{ .register = instruction.cpu_rs, .value = @bitCast(value) };
+        .cop2 => unreachable, // FIXME
+        .cop1 => @panic("mfc1 is not valid"),
+        .cop3 => @panic("mfc3 is not valid"),
+    }
 }
 
 fn execute_cfc(psx: *PSXState, instruction: instructions.cfc) void {
@@ -496,29 +500,34 @@ fn execute_cfc(psx: *PSXState, instruction: instructions.cfc) void {
 }
 
 fn execute_mtc(psx: *PSXState, instruction: instructions.mtc) void {
-    std.debug.assert(instruction.cop_index == 0);
-
     const value = load_reg(psx.cpu.regs, instruction.cpu_rs);
 
     switch (instruction.target) {
-        .BPC, .BDA, .JUMPDEST, .DCIC, .BadVaddr, .BDAM, .BPCM, .PRID => {
-            if (config.enable_debug_print) {
-                std.debug.print("FIXME mtc0 target write ignored\n", .{});
+        .cop0 => |cop0_target| {
+            switch (cop0_target) {
+                .BPC, .BDA, .JUMPDEST, .DCIC, .BadVaddr, .BDAM, .BPCM, .PRID => {
+                    if (config.enable_debug_print) {
+                        std.debug.print("FIXME mtc0 target write ignored\n", .{});
+                    }
+                },
+                .SR => psx.cpu.regs.sr = @bitCast(value),
+                .CAUSE => {
+                    const cause_new: @TypeOf(psx.cpu.regs.cause) = @bitCast(value);
+
+                    // Only those two bits are R/W
+                    psx.cpu.regs.cause.interrupt_pending.software_irq0 = cause_new.interrupt_pending.software_irq0;
+                    psx.cpu.regs.cause.interrupt_pending.software_irq1 = cause_new.interrupt_pending.software_irq1;
+                },
+                .EPC => unreachable,
+                _ => {
+                    std.debug.print("mtc0 target: {}\n", .{instruction.target});
+                    unreachable;
+                },
             }
         },
-        .SR => psx.cpu.regs.sr = @bitCast(value),
-        .CAUSE => {
-            const cause_new: @TypeOf(psx.cpu.regs.cause) = @bitCast(value);
-
-            // Only those two bits are R/W
-            psx.cpu.regs.cause.interrupt_pending.software_irq0 = cause_new.interrupt_pending.software_irq0;
-            psx.cpu.regs.cause.interrupt_pending.software_irq1 = cause_new.interrupt_pending.software_irq1;
-        },
-        .EPC => unreachable,
-        _ => {
-            std.debug.print("mtc0 target: {}\n", .{instruction.target});
-            unreachable;
-        },
+        .cop2 => unreachable, // FIXME
+        .cop1 => @panic("mtc1 is not valid"),
+        .cop3 => @panic("mtc3 is not valid"),
     }
 }
 

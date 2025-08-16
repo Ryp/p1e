@@ -320,10 +320,10 @@ fn decode_cop_instruction(op_cop: RawCopInstruction) Instruction {
 
         if (op_cop.b0_5 == 0b000000) {
             switch (op_copn) {
-                .mfc => return .{ .mfc = .{ .cop_index = op_cop.cop_index, .cpu_rs = @enumFromInt(op_cop.b16_20), .target = @enumFromInt(op_cop.b11_15) } },
-                .cfc => return .{ .cfc = .{ .cop_index = op_cop.cop_index, .cpu_rs = @enumFromInt(op_cop.b16_20), .target = @enumFromInt(op_cop.b11_15) } },
-                .mtc => return .{ .mtc = .{ .cop_index = op_cop.cop_index, .cpu_rs = @enumFromInt(op_cop.b16_20), .target = @enumFromInt(op_cop.b11_15) } },
-                .ctc => return .{ .ctc = .{ .cop_index = op_cop.cop_index, .cpu_rs = @enumFromInt(op_cop.b16_20), .target = @enumFromInt(op_cop.b11_15) } },
+                .mfc => return .{ .mfc = .{ .cpu_rs = @enumFromInt(op_cop.b16_20), .target = decode_cop_register_name(op_cop.cop_index, op_cop.b11_15) } },
+                .cfc => return .{ .cfc = .{ .cpu_rs = @enumFromInt(op_cop.b16_20), .target = decode_cop_register_name(op_cop.cop_index, op_cop.b11_15) } },
+                .mtc => return .{ .mtc = .{ .cpu_rs = @enumFromInt(op_cop.b16_20), .target = decode_cop_register_name(op_cop.cop_index, op_cop.b11_15) } },
+                .ctc => return .{ .ctc = .{ .cpu_rs = @enumFromInt(op_cop.b16_20), .target = decode_cop_register_name(op_cop.cop_index, op_cop.b11_15) } },
                 else => return .{ .invalid = undefined },
             }
         }
@@ -378,6 +378,22 @@ const CopN_OpCode = enum(u4) {
     _,
 };
 
+fn decode_cop_register_name(cop_index: u2, register_index: u5) CopRegisterName {
+    return switch (cop_index) {
+        0 => .{ .cop0 = @enumFromInt(register_index) },
+        1 => .{ .cop1 = undefined },
+        2 => .{ .cop2 = register_index },
+        3 => .{ .cop3 = undefined },
+    };
+}
+
+const CopRegisterName = union(enum) {
+    cop0: Cop0RegisterName,
+    cop1,
+    cop2: Cop2RegisterIndex,
+    cop3,
+};
+
 const Cop0RegisterName = enum(u5) {
     BPC = 3, // Breakpoint on execute (R/W)
     BDA = 5, // Breakpoint on data access (R/W)
@@ -392,6 +408,8 @@ const Cop0RegisterName = enum(u5) {
     PRID = 15, // Processor ID (R)
     _,
 };
+
+const Cop2RegisterIndex = u5;
 
 pub const generic_rd = struct {
     rd: cpu.RegisterName,
@@ -550,9 +568,8 @@ pub const jalr = struct {
 };
 
 pub const generic_cop_mov = struct {
-    cop_index: u2,
-    cpu_rs: cpu.RegisterName, // FIXME
-    target: Cop0RegisterName, // FIXME
+    cpu_rs: cpu.RegisterName,
+    target: CopRegisterName,
 };
 
 pub const mfc = generic_cop_mov;
