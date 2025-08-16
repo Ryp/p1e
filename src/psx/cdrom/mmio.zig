@@ -9,24 +9,61 @@ const execution = @import("execution.zig");
 pub fn load_mmio_u8(psx: *PSXState, offset: u29) u8 {
     std.debug.assert(offset >= MMIO.Offset and offset < MMIO.OffsetEnd);
 
-    const type_slice = mmio.get_mutable_mmio_slice_generic(u8, psx, offset);
-    _ = type_slice;
+    std.debug.print("CDROM MMIO Load: offset={x} bank={}\n", .{ offset, psx.mmio.cdrom.index_status.index });
 
     switch (offset) {
         MMIO.IndexStatus_Offset => {
-            psx.mmio.cdrom.index_status.status.PRMEMPT = 1; // FIXME Hack
+            // Update status
+            psx.mmio.cdrom.index_status.status = .{
+                .ADPBUSY = false, // FIXME
+                .PRMEMPT = psx.cdrom.parameter_fifo.writableLength() == psx.cdrom.parameter_fifo.buf.len,
+                .PRMWRDY = psx.cdrom.parameter_fifo.writableLength() > 0,
+                .RSLRRDY = psx.cdrom.response_fifo.readableLength() > 0,
+                .DRQSTS = false, // FIXME
+                .BUSYSTS = false, // FIXME
+            };
+
             std.debug.print("Index/Status Load: {}\n", .{psx.mmio.cdrom.index_status});
             return @bitCast(psx.mmio.cdrom.index_status);
         },
-        MMIO.CommandPort1_Offset => {
-            unreachable;
+        MMIO.CommandPort1_Offset...MMIO.CommandPort3_Offset => {
+            switch (psx.mmio.cdrom.index_status.index) {
+                0 => {
+                    const bank = &psx.mmio.cdrom.port.bank0.r;
+                    _ = bank;
+                    unreachable; // FIXME
+                },
+                1 => {
+                    const bank = &psx.mmio.cdrom.port.bank1.r;
+                    _ = bank;
+
+                    switch (offset) {
+                        MMIO.CommandPort1_Offset => {
+                            // FIXME
+                            const response = psx.cdrom.response_fifo.readItem().?;
+                            std.debug.print("Read response FIFO (got {x})\n", .{response});
+                            return response;
+                        },
+                        MMIO.CommandPort2_Offset => unreachable, // FIXME
+                        MMIO.CommandPort3_Offset => {
+                            return psx.cdrom.irq_requested_mask; // FIXME
+                        },
+                        else => unreachable,
+                    }
+                },
+                2 => {
+                    const bank = &psx.mmio.cdrom.port.bank2.r;
+                    _ = bank;
+                    unreachable; // FIXME
+                },
+                3 => {
+                    const bank = &psx.mmio.cdrom.port.bank3.r;
+                    _ = bank;
+                    unreachable; // FIXME
+                },
+            }
         },
-        MMIO.CommandPort2_Offset => {
-            unreachable;
-        },
-        MMIO.CommandPort3_Offset => {
-            unreachable;
-        },
+
         else => @panic("Invalid load offset"),
     }
 }
@@ -47,18 +84,13 @@ pub fn load_mmio_u16(psx: *PSXState, offset: u29) u16 {
 pub fn store_mmio_u8(psx: *PSXState, offset: u29, value: u8) void {
     std.debug.assert(offset >= MMIO.Offset and offset < MMIO.OffsetEnd);
 
-    const type_slice = mmio.get_mutable_mmio_slice_generic(u8, psx, offset);
+    std.debug.print("CDROM MMIO Store: offset={x} bank={} value={x}\n", .{ offset, psx.mmio.cdrom.index_status.index, value });
 
     switch (offset) {
         MMIO.IndexStatus_Offset => {
-            // FIXME
-            const status_save = psx.mmio.cdrom.index_status.status;
+            psx.mmio.cdrom.index_status.index = @truncate(value);
 
-            std.mem.writeInt(u8, type_slice, value, .little);
-
-            std.debug.print("New index: {}\n", .{psx.mmio.cdrom.index_status.index});
-
-            psx.mmio.cdrom.index_status.status = status_save;
+            std.debug.print("Set bank index: {}\n", .{psx.mmio.cdrom.index_status.index});
         },
         MMIO.CommandPort1_Offset...MMIO.CommandPort3_Offset => {
             switch (psx.mmio.cdrom.index_status.index) {
@@ -72,14 +104,15 @@ pub fn store_mmio_u8(psx: *PSXState, offset: u29, value: u8) void {
                         },
                         MMIO.CommandPort2_Offset => {
                             const parameter: @TypeOf(bank.parameter_fifo) = @bitCast(value);
-                            std.debug.print("Ignored parameter: {}\n", .{parameter});
+                            std.debug.print("CDROM wrote parameter: {}\n", .{parameter});
 
-                            psx.cdrom.parameter_fifo = parameter;
+                            psx.cdrom.parameter_fifo.writeItem(parameter) catch unreachable;
                         },
                         MMIO.CommandPort3_Offset => {
                             const request: @TypeOf(bank.request) = @bitCast(value);
                             std.debug.print("Ignored request: {}\n", .{request});
                             // FIXME
+                            unreachable;
                         },
                         else => unreachable,
                     }
@@ -92,10 +125,23 @@ pub fn store_mmio_u8(psx: *PSXState, offset: u29, value: u8) void {
                         MMIO.CommandPort2_Offset => {
                             const interrupt_enable_write: @TypeOf(bank.interrupt_enable) = @bitCast(value);
                             std.debug.print("Interrupt enable value: {}\n", .{interrupt_enable_write});
+                            std.debug.assert(interrupt_enable_write.zero == 0);
+
+                            psx.cdrom.irq_enabled_mask = interrupt_enable_write.bits;
                         },
                         MMIO.CommandPort3_Offset => {
                             const interrupt_flag_write: @TypeOf(bank.interrupt_flags) = @bitCast(value);
-                            std.debug.print("Interrupt flags value: {}\n", .{interrupt_flag_write});
+
+                            // FIXME unhandled
+                            std.debug.assert(!interrupt_flag_write.b5_SMADPCLR);
+                            std.debug.assert(!interrupt_flag_write.b7_CHPRST);
+
+                            if (interrupt_flag_write.b6_CLRPRM) {
+                                psx.cdrom.parameter_fifo.discard(psx.cdrom.parameter_fifo.count);
+                                std.debug.print("RESET PARAM FIFO\n", .{});
+                            }
+
+                            psx.cdrom.irq_requested_mask &= ~interrupt_flag_write.b0_4_ack;
                         },
                         else => unreachable,
                     }
@@ -128,16 +174,16 @@ pub const MMIO = struct {
 
 const MMIO_CDROM = packed struct {
     // 1F801800h - Index/Status Register (Bit0-1 R/W)
-    index_status: packed struct {
+    index_status: packed struct(u8) {
         index: u2 = undefined, // FIXME initial value 0-1 Index   Port 1F801801h-1F801803h index (0..3 = Index0..Index3)   (R/W)
-        status: packed struct {
+        status: packed struct(u6) {
             // (Bit2-7 Read Only)
-            ADPBUSY: u1, //   2   ADPBUSY XA-ADPCM fifo empty  (0=Empty) ;set when playing XA-ADPCM sound
-            PRMEMPT: u1, //   3   PRMEMPT Parameter fifo empty (1=Empty) ;triggered before writing 1st byte
-            PRMWRDY: u1, //   4   PRMWRDY Parameter fifo full  (0=Full)  ;triggered after writing 16 bytes
-            RSLRRDY: u1, //   5   RSLRRDY Response fifo empty  (0=Empty) ;triggered after reading LAST byte
-            DRQSTS: u1, //    6   DRQSTS  Data fifo empty      (0=Empty) ;triggered after reading LAST byte
-            BUSYSTS: u1, //   7   BUSYSTS Command/parameter transmission busy  (1=Busy)
+            ADPBUSY: bool, //   2   ADPBUSY XA-ADPCM fifo empty  (0=Empty) ;set when playing XA-ADPCM sound
+            PRMEMPT: bool, //   3   PRMEMPT Parameter fifo empty (1=Empty) ;triggered before writing 1st byte
+            PRMWRDY: bool, //   4   PRMWRDY Parameter fifo full  (0=Full)  ;triggered after writing 16 bytes
+            RSLRRDY: bool, //   5   RSLRRDY Response fifo empty  (0=Empty) ;triggered after reading LAST byte
+            DRQSTS: bool, //    6   DRQSTS  Data fifo empty      (0=Empty) ;triggered after reading LAST byte
+            BUSYSTS: bool, //   7   BUSYSTS Command/parameter transmission busy  (1=Busy)
             // Bit3,4,5 are bound to 5bit counters; ie. the bits become true at specified amount of reads/writes, and thereafter once on every further 32 reads/writes.
         } = undefined, // FIXME initial value
     } = .{},
@@ -155,12 +201,12 @@ const MMIO_CDROM = packed struct {
         // The PSX hardware allows to read 800h-byte or 924h-byte sectors, indexed as [000h..7FFh] or [000h..923h], when trying to read further bytes, then the PSX will repeat the byte at index [800h-8] or [924h-4] as padding value.
         // Port 1F801802h can be accessed with 8bit or 16bit reads (ie. to read a 2048-byte sector, one can use 2048 load-byte opcodes, or 1024 load halfword opcodes, or, more conventionally, a 512 word DMA transfer; the actual CDROM databus is only 8bits wide, so CPU/DMA are apparently breaking 16bit/32bit reads into multiple 8bit reads from 1F801802h).
         bank0: packed union {
-            r: packed struct {
+            r: packed struct(u24) {
                 response_fifo_mirror: u8, // 1F801801h - Response Fifo Mirror (R)
                 data_fifo_placeholder: u8, // 1F801802h.Index0 Data FIFO
                 interrupt_enable: InterruptEnableR, // 1F801803h.Index0 - Interrupt Enable Register (R)
             },
-            w: packed struct {
+            w: packed struct(u24) {
                 // Writing to this address sends the command byte to the CDROM controller, which will then read-out any Parameter byte(s) which have been previously stored in the Parameter Fifo. It takes a while until the command/parameters are transferred to the controller, and until the response bytes are received; once when completed, interrupt INT3 is generated (or INT5 in case of invalid command/parameter values), and the response (or error code) can be then read from the Response Fifo. Some commands additionally have a second response, which is sent with another interrupt.
                 command: u8, // 1F801801h.Index0 - Command Register (W)
 
@@ -175,14 +221,14 @@ const MMIO_CDROM = packed struct {
             },
         },
         bank1: packed union {
-            r: packed struct {
+            r: packed struct(u24) {
                 // The response Fifo is a 16-byte buffer, most or all responses are less than 16 bytes, after reading the last used byte (or before reading anything when the response is 0-byte long), Bit5 of the Index/Status register becomes zero to indicate that the last byte was received.
                 // When reading further bytes: The buffer is padded with 00h's to the end of the 16-bytes, and does then restart at the first response byte (that, without receiving a new response, so it'll always return the same 16 bytes, until a new command/response has been sent/received).
                 response_fifo: u8, // 1F801801h.Index1 - Response Fifo (R)
                 data_fifo_placeholder: u8, // 1F801802h.Index1 Data FIFO
                 interrupt_flags: InterruptFlagsR, // 1F801803h.Index1 - Interrupt Flag Register (R/W)
             },
-            w: packed struct {
+            w: packed struct(u24) {
                 // This register seems to be restricted to 8bit bus, unknown if/how the PSX DMA controller can write to it (it might support only 16bit data for CDROM).
                 sound_map_data_out: u8, // 1F801801h.Index1 - Sound Map Data Out (W)
                 interrupt_enable: InterruptEnableW, // 1F801802h.Index1 - Interrupt Enable Register (W)
@@ -190,12 +236,12 @@ const MMIO_CDROM = packed struct {
             },
         },
         bank2: packed union {
-            r: packed struct {
+            r: packed struct(u24) {
                 response_fifo_mirror: u8, // 1F801801h - Response Fifo Mirror (R)
                 data_fifo_placeholder: u8, // 1F801802h.Index2 Data FIFO
                 interrupt_enable_mirror: InterruptEnableR, // 1F801803h.Index2 - Interrupt Enable Register (R) (Mirror)
             },
-            w: packed struct {
+            w: packed struct(u24) {
                 sound_map_coding: packed struct { // 1F801801h.Index2 - Sound Map Coding Info (W)
                     channel: enum(u1) { //   0    Mono/Stereo     (0=Mono, 1=Stereo)
                         Mono,
@@ -226,12 +272,12 @@ const MMIO_CDROM = packed struct {
             },
         },
         bank3: packed union {
-            r: packed struct {
+            r: packed struct(u24) {
                 response_fifo_mirror: u8, // 1F801801h - Response Fifo Mirror (R)
                 data_fifo_placeholder: u8, // 1F801802h.Index3 Data FIFO
                 interrupt_flags_mirror: InterruptFlagsR, // 1F801803h.Index3 - Interrupt Flag Register (R) (Mirror)
             },
-            w: packed struct {
+            w: packed struct(u24) {
                 // Allows to configure the CD for mono/stereo output (eg. values "80h,0,80h,0" produce normal stereo volume, values "40h,40h,40h,40h" produce mono output of equivalent volume).
                 // When using bigger values, the hardware does have some incomplete saturation support; the saturation works up to double volume (eg. overflows that occur on "FFh,0,FFh,0" or "80h,80h,80h,80h" are clipped to min/max levels), however, the saturation does NOT work properly when exceeding double volume (eg. mono with quad-volume "FFh,FFh,FFh,FFh").
                 //
@@ -301,23 +347,24 @@ const MMIO_CDROM = packed struct {
         always_one: u3, //   5-7  Always 1 ;XXX "_"
     };
     const InterruptFlagsW = packed struct(u8) {
-        b0_2_ack: u3, //   0-2   Write: 7=Acknowledge   ;INT1..INT7
-        b3_ack_CLRBFEMPT: u1, //   3     Write: 1=Acknowledge   ;INT8  ;XXX CLRBFEMPT
-        b4_CLRBFWRDY: u1, //   4     Write: 1=Acknowledge   ;INT10h;XXX CLRBFWRDY
-        b5_SMADPCLR: u1, //   5     Write: 1=Unknown              ;XXX SMADPCLR
-        b6_CLRPRM: u1, //   6     Write: 1=Reset Parameter Fifo ;XXX CLRPRM
-        b7_CHPRST: u1, //   7     Write: 1=Unknown              ;XXX CHPRST
+        //   0-2   Write: 7=Acknowledge   ;INT1..INT7
+        //   3     Write: 1=Acknowledge   ;INT8  ;XXX CLRBFEMPT
+        //   4     Write: 1=Acknowledge   ;INT10h;XXX CLRBFWRDY
+        b0_4_ack: u5,
+        b5_SMADPCLR: bool, //   5     Write: 1=Unknown              ;XXX SMADPCLR
+        b6_CLRPRM: bool, //   6     Write: 1=Reset Parameter Fifo ;XXX CLRPRM
+        b7_CHPRST: bool, //   7     Write: 1=Unknown              ;XXX CHPRST
     };
 
     //   0-4  Interrupt Enable Bits (usually all set, ie. 1Fh=Enable All IRQs)
     //   5-7  Unknown/unused (write: should be zero) (read: usually all bits set)
-    const InterruptEnableR = packed struct {
-        bits: u4,
-        ones: u4 = 0b1111,
+    const InterruptEnableR = packed struct(u8) {
+        bits: u5,
+        ones: u3 = 0b111,
     };
-    const InterruptEnableW = packed struct {
-        bits: u4,
-        zero: u4 = 0,
+    const InterruptEnableW = packed struct(u8) {
+        bits: u5,
+        zero: u3 = 0,
     };
 
     //   0-7  Volume Level (00h..FFh) (00h=Off, FFh=Max/Double, 80h=Default/Normal)
