@@ -3,14 +3,16 @@ const std = @import("std");
 const CPUState = @import("cpu/state.zig").CPUState;
 const gte = @import("gte/state.zig");
 const gpu = @import("gpu/state.zig");
-const mmio = @import("mmio.zig");
 const cdrom = @import("cdrom/state.zig");
+const ports = @import("ports/state.zig");
+const mmio = @import("mmio.zig");
 
 pub const PSXState = struct {
     cpu: CPUState = .{},
     gte: gte.GTEState = .{},
     gpu: gpu.GPUState,
     cdrom: cdrom.CDROMState = .{},
+    ports: ports.PortsState = .{},
     mmio: mmio.MMIO = .{},
     ram: []u8,
     bios: [mmio.BIOS_SizeBytes]u8,
@@ -24,6 +26,7 @@ pub const PSXState = struct {
         try self.gte.write(writer);
         try self.gpu.write(writer);
         try self.cdrom.write(writer);
+        try self.ports.write(writer);
 
         try writer.writeStruct(self.mmio);
         try writer.writeAll(self.ram);
@@ -39,6 +42,7 @@ pub const PSXState = struct {
         try self.gte.read(reader);
         try self.gpu.read(reader);
         try self.cdrom.read(reader);
+        try self.ports.read(reader);
 
         self.mmio = try reader.readStruct(@TypeOf(self.mmio));
 

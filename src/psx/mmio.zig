@@ -5,6 +5,7 @@ const PSXState = psx_state.PSXState;
 
 const memory_control1 = @import("mmio_memory_control1.zig");
 const memory_control2 = @import("mmio_memory_control2.zig");
+const ports = @import("ports/mmio.zig");
 const irq = @import("mmio_interrupts.zig");
 const dma = @import("dma/mmio.zig");
 const timers = @import("mmio_timers.zig");
@@ -84,34 +85,20 @@ fn load_generic(comptime T: type, psx: *PSXState, address: PSXAddress) T {
                 },
                 MMIO_Offset...MMIO_OffsetEnd - 1 => |offset| {
                     switch (offset) {
-                        memory_control1.MMIO.Offset...memory_control1.MMIO.OffsetEnd - 1 => {
-                            switch (T) {
-                                u32 => return memory_control1.load_mmio_u32(psx, offset),
-                                else => @panic("Invalid MC1 MMIO load type"),
-                            }
+                        memory_control1.MMIO.Offset...memory_control1.MMIO.OffsetEnd - 1 => switch (T) {
+                            u32 => return memory_control1.load_mmio_u32(psx, offset),
+                            else => @panic("Invalid MC1 MMIO load type"),
                         },
-                        IOPorts_MMIO.Offset...IOPorts_MMIO.OffsetEnd - 1 => {
-                            std.debug.print("FIXME IOPorts load ignored at offset {x}\n", .{offset});
-
-                            if (offset == IOPorts_MMIO.Joy_RX_TX_Offset) {
-                                return 0; // FIXME
-                            } else if (offset == IOPorts_MMIO.Joy_Ctrl_Offset) {
-                                return 0; // FIXME
-                            }
-
-                            @panic("Invalid address");
+                        ports.MMIO.Offset...ports.MMIO.OffsetEnd - 1 => {
+                            return ports.load_mmio_generic(T, psx, offset);
                         },
-                        memory_control2.MMIO.Offset...memory_control2.MMIO.OffsetEnd - 1 => {
-                            switch (T) {
-                                u16, u32 => return memory_control2.load_mmio_generic(T, psx, offset),
-                                else => @panic("Invalid MC2 MMIO load type"),
-                            }
+                        memory_control2.MMIO.Offset...memory_control2.MMIO.OffsetEnd - 1 => switch (T) {
+                            u16, u32 => return memory_control2.load_mmio_generic(T, psx, offset),
+                            else => @panic("Invalid MC2 MMIO load type"),
                         },
-                        irq.MMIO.Offset...irq.MMIO.OffsetEnd - 1 => {
-                            switch (T) {
-                                u16, u32 => return irq.load_mmio_generic(T, psx, offset),
-                                else => @panic("Invalid IRQ MMIO load type"),
-                            }
+                        irq.MMIO.Offset...irq.MMIO.OffsetEnd - 1 => switch (T) {
+                            u16, u32 => return irq.load_mmio_generic(T, psx, offset),
+                            else => @panic("Invalid IRQ MMIO load type"),
                         },
                         dma.MMIO.Offset...dma.MMIO.OffsetEnd - 1 => {
                             return dma.load_mmio_generic(T, psx, offset);
@@ -119,18 +106,14 @@ fn load_generic(comptime T: type, psx: *PSXState, address: PSXAddress) T {
                         timers.MMIO.Offset...timers.MMIO.OffsetEnd - 1 => {
                             return timers.load_mmio_generic(T, psx, offset);
                         },
-                        cdrom.MMIO.Offset...cdrom.MMIO.OffsetEnd - 1 => {
-                            switch (T) {
-                                u8 => return cdrom.load_mmio_u8(psx, offset),
-                                u16 => return cdrom.load_mmio_u16(psx, offset),
-                                else => @panic("Invalid MMIO load type"),
-                            }
+                        cdrom.MMIO.Offset...cdrom.MMIO.OffsetEnd - 1 => switch (T) {
+                            u8 => return cdrom.load_mmio_u8(psx, offset),
+                            u16 => return cdrom.load_mmio_u16(psx, offset),
+                            else => @panic("Invalid MMIO load type"),
                         },
-                        gpu.MMIO.Offset...gpu.MMIO.OffsetEnd - 1 => {
-                            switch (T) {
-                                u32 => return gpu.load_mmio_u32(psx, offset),
-                                else => @panic("Invalid MMIO load type"),
-                            }
+                        gpu.MMIO.Offset...gpu.MMIO.OffsetEnd - 1 => switch (T) {
+                            u32 => return gpu.load_mmio_u32(psx, offset),
+                            else => @panic("Invalid MMIO load type"),
                         },
                         MDEC_MMIO.Offset...MDEC_MMIO.OffsetEnd - 1 => {
                             @panic("NOT IMPLEMENTED");
@@ -217,26 +200,20 @@ fn store_generic(comptime T: type, psx: *PSXState, address: PSXAddress, value: T
                 },
                 MMIO_Offset...MMIO_OffsetEnd - 1 => |offset| {
                     switch (offset) {
-                        memory_control1.MMIO.Offset...memory_control1.MMIO.OffsetEnd - 1 => {
-                            switch (T) {
-                                u32 => memory_control1.store_mmio_u32(psx, offset, value),
-                                else => @panic("Invalid MC1 MMIO store type"),
-                            }
+                        memory_control1.MMIO.Offset...memory_control1.MMIO.OffsetEnd - 1 => switch (T) {
+                            u32 => memory_control1.store_mmio_u32(psx, offset, value),
+                            else => @panic("Invalid MC1 MMIO store type"),
                         },
-                        IOPorts_MMIO.Offset...IOPorts_MMIO.OffsetEnd - 1 => {
-                            std.debug.print("FIXME IOPorts store ignored at offset {x}\n", .{offset});
+                        ports.MMIO.Offset...ports.MMIO.OffsetEnd - 1 => {
+                            ports.store_mmio_generic(T, psx, offset, value);
                         },
-                        memory_control2.MMIO.Offset...memory_control2.MMIO.OffsetEnd - 1 => {
-                            switch (T) {
-                                u16, u32 => return memory_control2.store_mmio_generic(T, psx, offset, value),
-                                else => @panic("Invalid MC2 MMIO store type"),
-                            }
+                        memory_control2.MMIO.Offset...memory_control2.MMIO.OffsetEnd - 1 => switch (T) {
+                            u16, u32 => memory_control2.store_mmio_generic(T, psx, offset, value),
+                            else => @panic("Invalid MC2 MMIO store type"),
                         },
-                        irq.MMIO.Offset...irq.MMIO.OffsetEnd - 1 => {
-                            switch (T) {
-                                u16, u32 => return irq.store_mmio_generic(T, psx, offset, value),
-                                else => @panic("Invalid IRQ MMIO store type"),
-                            }
+                        irq.MMIO.Offset...irq.MMIO.OffsetEnd - 1 => switch (T) {
+                            u16, u32 => irq.store_mmio_generic(T, psx, offset, value),
+                            else => @panic("Invalid IRQ MMIO store type"),
                         },
                         dma.MMIO.Offset...dma.MMIO.OffsetEnd - 1 => {
                             dma.store_mmio_generic(T, psx, offset, value);
@@ -244,17 +221,13 @@ fn store_generic(comptime T: type, psx: *PSXState, address: PSXAddress, value: T
                         timers.MMIO.Offset...timers.MMIO.OffsetEnd - 1 => {
                             timers.store_mmio_generic(T, psx, offset, value);
                         },
-                        cdrom.MMIO.Offset...cdrom.MMIO.OffsetEnd - 1 => {
-                            switch (T) {
-                                u8 => cdrom.store_mmio_u8(psx, offset, value),
-                                else => @panic("Invalid MMIO store type"),
-                            }
+                        cdrom.MMIO.Offset...cdrom.MMIO.OffsetEnd - 1 => switch (T) {
+                            u8 => cdrom.store_mmio_u8(psx, offset, value),
+                            else => @panic("Invalid MMIO store type"),
                         },
-                        gpu.MMIO.Offset...gpu.MMIO.OffsetEnd - 1 => {
-                            switch (T) {
-                                u32 => gpu.store_mmio_u32(psx, offset, value),
-                                else => @panic("Invalid MMIO store type"),
-                            }
+                        gpu.MMIO.Offset...gpu.MMIO.OffsetEnd - 1 => switch (T) {
+                            u32 => gpu.store_mmio_u32(psx, offset, value),
+                            else => @panic("Invalid MMIO store type"),
                         },
                         MDEC_MMIO.Offset...MDEC_MMIO.OffsetEnd - 1 => {
                             if (config.enable_debug_print) {
@@ -333,7 +306,7 @@ pub const MMIO_Offset = 0x1f801000;
 const MMIO_OffsetEnd = MMIO_Offset + MMIO_SizeBytes;
 pub const MMIO = packed struct {
     memory_control1: memory_control1.MMIO.Packed = .{},
-    io_ports: IOPorts_MMIO.Packed = .{},
+    ports: ports.MMIO.Packed = .{},
     memory_control2: memory_control2.MMIO.Packed = .{},
     irq: irq.MMIO.Packed = .{},
     dma: dma.MMIO.Packed = .{},
@@ -343,24 +316,6 @@ pub const MMIO = packed struct {
     mdec: MDEC_MMIO.Packed = .{},
     spu: spu.MMIO.Packed = .{},
     expansion2: Expansion2_MMIO.Packed = .{},
-};
-
-pub const IOPorts_MMIO = struct {
-    pub const Offset = 0x1f801040;
-    pub const OffsetEnd = Offset + SizeBytes;
-
-    const SizeBytes = memory_control2.MMIO.Offset - Offset;
-
-    comptime {
-        std.debug.assert(@sizeOf(Packed) == SizeBytes);
-    }
-
-    pub const Joy_RX_TX_Offset = 0x1f801040;
-    pub const Joy_Ctrl_Offset = 0x1f80104a;
-
-    pub const Packed = packed struct {
-        _unused: u256 = undefined,
-    };
 };
 
 pub const MDEC_MMIO = struct {
@@ -400,7 +355,7 @@ pub const Expansion2_MMIO = struct {
 comptime {
     // Assert that the layout of the MMIO struct is correct, otherwise all hell breaks loose
     std.debug.assert(@offsetOf(MMIO, "memory_control1") == memory_control1.MMIO.Offset - MMIO_Offset);
-    std.debug.assert(@offsetOf(MMIO, "io_ports") == IOPorts_MMIO.Offset - MMIO_Offset);
+    std.debug.assert(@offsetOf(MMIO, "ports") == ports.MMIO.Offset - MMIO_Offset);
     std.debug.assert(@offsetOf(MMIO, "memory_control2") == memory_control2.MMIO.Offset - MMIO_Offset);
     std.debug.assert(@offsetOf(MMIO, "irq") == irq.MMIO.Offset - MMIO_Offset);
     std.debug.assert(@offsetOf(MMIO, "dma") == dma.MMIO.Offset - MMIO_Offset);
