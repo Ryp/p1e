@@ -1,7 +1,7 @@
 const std = @import("std");
 
 const mmio = @import("mmio.zig");
-const irq = @import("mmio_interrupts.zig");
+const ports = @import("ports/mmio.zig");
 
 const PSXState = @import("state.zig").PSXState;
 
@@ -71,7 +71,7 @@ pub const MMIO = struct {
     pub const Offset = 0x1f801000;
     pub const OffsetEnd = Offset + SizeBytes;
 
-    const SizeBytes = mmio.IOPorts_MMIO.Offset - Offset;
+    const SizeBytes = ports.MMIO.Offset - Offset;
 
     comptime {
         std.debug.assert(@sizeOf(Packed) == SizeBytes);
