@@ -33,13 +33,11 @@ pub fn store_mmio_generic(comptime T: type, psx: *PSXState, offset: u29, value: 
         MMIO.Status_Offset => {
             // Acknowledge IRQ
             psx.mmio.irq.status.raw &= @truncate(value);
-            std.debug.print("MMIO ACK IRQ - now: {}\n", .{psx.mmio.irq.status.typed}); // FIXME
 
             cpu_execution.update_hardware_interrupt_line(psx);
         },
         MMIO.Mask_Offset => {
             psx.mmio.irq.mask.raw = @truncate(value);
-            std.debug.print("MMIO Set IRQ Mask: {}\n", .{psx.mmio.irq.mask.typed}); // FIXME
 
             cpu_execution.update_hardware_interrupt_line(psx);
         },
