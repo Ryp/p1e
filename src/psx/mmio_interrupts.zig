@@ -1,7 +1,7 @@
 const std = @import("std");
 
 const PSXState = @import("state.zig").PSXState;
-const mmio_dma = @import("dma.zig");
+const mmio_dma = @import("dma/mmio.zig");
 
 const config = @import("config.zig");
 const cpu_execution = @import("cpu/execution.zig");
