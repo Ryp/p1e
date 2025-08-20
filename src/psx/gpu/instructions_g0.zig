@@ -211,8 +211,15 @@ pub const ClearTextureCache = packed struct(u32) {
     op_code: OpCode,
 };
 
+pub const FillRectangleInVRAM = packed struct(u96) {
+    color: PackedRGB8,
+    op_code: OpCode, // 1st  Color+Command     (CcBbGgRrh)  ;24bit RGB value (see note)
+    position_top_left: PackedVertexPos, // 2nd  Top Left Corner   (YyyyXxxxh)  ;Xpos counted in halfwords, steps of 10h
+    size: PackedVertexPos, //  3rd Width+Height      (YsizXsizh)  ;Xsiz counted in halfwords, steps of 10h
+};
+
 pub const DrawTriangleMonochrome = packed struct {
-    color: PackedColor,
+    color: PackedRGB8,
     op_code: OpCode,
 
     v1_pos: PackedVertexPos,
@@ -221,7 +228,7 @@ pub const DrawTriangleMonochrome = packed struct {
 };
 
 pub const DrawQuadMonochrome = packed struct {
-    color: PackedColor,
+    color: PackedRGB8,
     op_code: OpCode,
 
     v1_pos: PackedVertexPos,
@@ -231,7 +238,7 @@ pub const DrawQuadMonochrome = packed struct {
 };
 
 pub const DrawTriangleTextured = packed struct {
-    color: PackedColor,
+    color: PackedRGB8,
     op_code: OpCode,
 
     v1_pos: PackedVertexPos,
@@ -248,7 +255,7 @@ pub const DrawTriangleTextured = packed struct {
 };
 
 pub const DrawQuadTextured = packed struct {
-    color: PackedColor,
+    color: PackedRGB8,
     op_code: OpCode,
     v1_pos: PackedVertexPos,
     v1_texcoord: PackedTexCoord,
@@ -268,51 +275,51 @@ pub const DrawQuadTextured = packed struct {
 };
 
 pub const DrawTriangleShaded = packed struct {
-    v1_color: PackedColor,
+    v1_color: PackedRGB8,
     op_code: OpCode,
     v1_pos: PackedVertexPos,
 
-    v2_color: PackedColor,
+    v2_color: PackedRGB8,
     v2_unused: u8,
     v2_pos: PackedVertexPos,
 
-    v3_color: PackedColor,
+    v3_color: PackedRGB8,
     v3_unused: u8,
     v3_pos: PackedVertexPos,
 };
 
 pub const DrawQuadShaded = packed struct {
-    v1_color: PackedColor,
+    v1_color: PackedRGB8,
     op_code: OpCode,
     v1_pos: PackedVertexPos,
 
-    v2_color: PackedColor,
+    v2_color: PackedRGB8,
     v2_unused: u8,
     v2_pos: PackedVertexPos,
 
-    v3_color: PackedColor,
+    v3_color: PackedRGB8,
     v3_unused: u8,
     v3_pos: PackedVertexPos,
 
-    v4_color: PackedColor,
+    v4_color: PackedRGB8,
     v4_unused: u8,
     v4_pos: PackedVertexPos,
 };
 
 pub const DrawTriangleShadedTextured = packed struct {
-    v1_color: PackedColor,
+    v1_color: PackedRGB8,
     op_code: OpCode,
     v1_pos: PackedVertexPos,
     v1_texcoord: PackedTexCoord,
     palette: u16,
 
-    v2_color: PackedColor,
+    v2_color: PackedRGB8,
     v2_unused: u8,
     v2_pos: PackedVertexPos,
     v2_texcoord: PackedTexCoord,
     tex_page: u16,
 
-    v3_color: PackedColor,
+    v3_color: PackedRGB8,
     v3_unused: u8,
     v3_pos: PackedVertexPos,
     v3_texcoord: PackedTexCoord,
@@ -320,25 +327,25 @@ pub const DrawTriangleShadedTextured = packed struct {
 };
 
 pub const DrawQuadShadedTextured = packed struct {
-    v1_color: PackedColor,
+    v1_color: PackedRGB8,
     op_code: OpCode,
     v1_pos: PackedVertexPos,
     v1_texcoord: PackedTexCoord,
     palette: u16,
 
-    v2_color: PackedColor,
+    v2_color: PackedRGB8,
     v2_unused: u8,
     v2_pos: PackedVertexPos,
     v2_texcoord: PackedTexCoord,
     tex_page: u16,
 
-    v3_color: PackedColor,
+    v3_color: PackedRGB8,
     v3_unused: u8,
     v3_pos: PackedVertexPos,
     v3_texcoord: PackedTexCoord,
     zero_v3_b16_31: u16,
 
-    v4_color: PackedColor,
+    v4_color: PackedRGB8,
     v4_unused: u8,
     v4_pos: PackedVertexPos,
     v4_texcoord: PackedTexCoord,
@@ -346,13 +353,13 @@ pub const DrawQuadShadedTextured = packed struct {
 };
 
 pub const DrawRectMonochrome = packed struct(u64) {
-    color: PackedColor,
+    color: PackedRGB8,
     op_code: OpCode,
     position_top_left: PackedVertexPos,
 };
 
 pub const DrawRectMonochromeVariable = packed struct(u96) {
-    color: PackedColor,
+    color: PackedRGB8,
     op_code: OpCode,
     position_top_left: PackedVertexPos,
     size: PackedVertexPos,
@@ -373,23 +380,31 @@ pub const DrawRectTexturedVariable = packed struct(u128) {
     w3: u32,
 };
 
-pub const PackedVertexPos = packed struct {
+pub const PackedVertexPos = packed struct(u32) {
     x: u16,
     y: u16,
 };
 
-pub const PackedColor = packed struct {
+pub const PackedRGB8 = packed struct(u24) {
     r: u8,
     g: u8,
     b: u8,
 };
 
-pub const PackedTexCoord = packed struct {
+pub const PackedTexCoord = packed struct(u16) {
     x: u8,
     y: u8,
 };
 
-pub const CopyRectangleAcrossCPU = packed struct {
+pub const CopyRectangleInVRAM = packed struct(u128) {
+    zero_b0_23: u24,
+    op_code: OpCode,
+    position_top_left_src: PackedVertexPos,
+    position_top_left_dst: PackedVertexPos,
+    size: PackedVertexPos,
+};
+
+pub const CopyRectangleAcrossCPU = packed struct(u96) {
     zero_b0_23: u24,
     op_code: OpCode,
     offset_x: u16,
@@ -398,13 +413,13 @@ pub const CopyRectangleAcrossCPU = packed struct {
     extent_y: u16,
 };
 
-pub const SetDrawMode = packed struct {
+pub const SetDrawMode = packed struct(u32) {
     texture_x_base: u4,
     texture_y_base: u1,
     semi_transparency: u2,
     texture_page_colors: mmio.MMIO.Packed.TexturePageColors,
     dither_mode: u1,
-    draw_to_display_area: u1,
+    draw_to_display_area: mmio.MMIO.Packed.DrawToDisplayArea,
     texture_disable: u1,
     rectangle_texture_x_flip: u1,
     rectangle_texture_y_flip: u1,
@@ -412,7 +427,7 @@ pub const SetDrawMode = packed struct {
     op_code: OpCode,
 };
 
-pub const SetTextureWindow = packed struct {
+pub const SetTextureWindow = packed struct(u32) {
     mask_x: u5,
     mask_y: u5,
     offset_x: u5,
@@ -421,28 +436,28 @@ pub const SetTextureWindow = packed struct {
     op_code: OpCode,
 };
 
-pub const SetDrawingAreaTopLeft = packed struct {
+pub const SetDrawingAreaTopLeft = packed struct(u32) {
     left: u10,
     top: u10,
     zero_b20_23: u4,
     op_code: OpCode,
 };
 
-pub const SetDrawingAreaBottomRight = packed struct {
+pub const SetDrawingAreaBottomRight = packed struct(u32) {
     right: u10,
     bottom: u10,
     zero_b20_23: u4,
     op_code: OpCode,
 };
 
-pub const SetDrawingOffset = packed struct {
+pub const SetDrawingOffset = packed struct(u32) {
     x: i11,
     y: i11,
     zero_b22_23: u2,
     op_code: OpCode,
 };
 
-pub const SetMaskBitSetting = packed struct {
+pub const SetMaskBitSetting = packed struct(u32) {
     set_mask_when_drawing: u1,
     check_mask_before_drawing: u1,
     zero_b2_23: u22,
