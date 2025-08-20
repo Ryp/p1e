@@ -89,7 +89,7 @@ const MMIO_GPU = packed struct {
         semi_transparency: u2 = 0, // 5-6   Semi Transparency     (0=B/2+F/2, 1=B+F, 2=B-F, 3=B+F/4)  ;GP0(E1h).5-6
         texture_page_colors: TexturePageColors = ._4bits, // 7-8 Texture page colors   (0=4bit, 1=8bit, 2=15bit, 3=Reserved)GP0(E1h).7-8
         dither_mode: u1 = 0, // 9 Dither 24bit to 15bit (0=Off/strip LSBs, 1=Dither Enabled);GP0(E1h).9
-        draw_to_display_area: u1 = 0, //   10    Drawing to display area (0=Prohibited, 1=Allowed)         ;GP0(E1h).10
+        draw_to_display_area: DrawToDisplayArea = .Prohibited, //   10    Drawing to display area (0=Prohibited, 1=Allowed)         ;GP0(E1h).10
         // Set mask while drawing (0=TextureBit15, 1=ForceBit15=1)   ;GPUSTAT.11
         set_mask_when_drawing: u1 = 0, //   11    Set Mask-bit when drawing pixels (0=No, 1=Yes/Mask)       ;GP0(E6h).0
         // Check mask before draw (0=Draw Always, 1=Draw if Bit15=0) ;GPUSTAT.12
@@ -102,7 +102,7 @@ const MMIO_GPU = packed struct {
         vertical_resolution: VerticalResolution = ._240lines, //   19    Vertical Resolution         (0=240, 1=480, when Bit22=1)  ;GP1(08h).2
         video_mode: VideoMode = .NTSC, //   20    Video Mode                  (0=NTSC/60Hz, 1=PAL/50Hz)     ;GP1(08h).3
         display_area_color_depth: DisplayAreaColorDepth = ._15bits, //   21    Display Area Color Depth    (0=15bit, 1=24bit)            ;GP1(08h).4
-        vertical_interlace: u1 = 1, //   22    Vertical Interlace          (0=Off, 1=On)                 ;GP1(08h).5
+        vertical_interlace: bool = true, //   22    Vertical Interlace          (0=Off, 1=On)                 ;GP1(08h).5
         display_enabled: DisplayState = .Disabled, //   23    Display Enable              (0=Enabled, 1=Disabled)       ;GP1(03h).0
         interrupt_request: u1 = 0, //   24    Interrupt Request (IRQ1)    (0=Off, 1=IRQ)       ;GP0(1Fh)/GP1(02h)
         dma_data_request_mode: u1 = 0, //   25    DMA / Data Request, meaning depends on GP1(04h) DMA Direction:
@@ -138,6 +138,11 @@ const MMIO_GPU = packed struct {
         _8bits,
         _15bits,
         Reserved,
+    };
+
+    pub const DrawToDisplayArea = enum(u1) {
+        Prohibited = 0,
+        Allowed = 1,
     };
 
     pub const VerticalResolution = enum(u1) {

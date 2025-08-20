@@ -56,7 +56,7 @@ const Command = union(OpCode) {
         vertical_resolution: mmio.MMIO.Packed.VerticalResolution,
         video_mode: mmio.MMIO.Packed.VideoMode,
         display_area_color_depth: mmio.MMIO.Packed.DisplayAreaColorDepth,
-        vertical_interlace: u1,
+        vertical_interlace: bool,
         horizontal_resolution2: u1,
         reverse_flag: u1,
         zero_b8_23: u16,

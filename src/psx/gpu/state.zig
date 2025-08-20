@@ -3,6 +3,8 @@ const std = @import("std");
 const g0 = @import("instructions_g0.zig");
 
 pub const GPUState = struct {
+    vram: []u8,
+
     texture_window_x_mask: u5 = 0,
     texture_window_y_mask: u5 = 0,
     texture_window_x_offset: u5 = 0,
@@ -56,20 +58,24 @@ pub const GPUState = struct {
     draw_command_buffer: []DrawCommand,
     draw_command_offset: u32 = 0,
 
+    // FIXME
     pub fn write(self: @This(), writer: anytype) !void {
-        // FIXME
-        _ = self;
-        _ = writer;
+        try writer.writeAll(self.vram);
     }
 
+    // FIXME
     pub fn read(self: *@This(), reader: anytype) !void {
-        // FIXME
-        _ = self;
-        _ = reader;
+        const vram_bytes_written = try reader.readAll(self.vram);
+        if (vram_bytes_written != self.vram.len) {
+            return error.InvalidVRAMSize;
+        }
     }
 };
 
 pub fn create_gpu_state(allocator: std.mem.Allocator) !GPUState {
+    const vram = try allocator.alloc(u8, VRAM_SizeBytes);
+    errdefer allocator.free(vram);
+
     const vertex_buffer = try allocator.alloc(PhatVertex, 1_000_000); // FIXME
     errdefer allocator.free(vertex_buffer);
 
@@ -80,6 +86,7 @@ pub fn create_gpu_state(allocator: std.mem.Allocator) !GPUState {
     errdefer allocator.free(draw_command_buffer);
 
     return GPUState{
+        .vram = vram,
         .vertex_buffer = vertex_buffer,
         .index_buffer = index_buffer,
         .draw_command_buffer = draw_command_buffer,
@@ -87,6 +94,7 @@ pub fn create_gpu_state(allocator: std.mem.Allocator) !GPUState {
 }
 
 pub fn destroy_gpu_state(state: *GPUState, allocator: std.mem.Allocator) void {
+    allocator.free(state.vram);
     allocator.free(state.vertex_buffer);
     allocator.free(state.index_buffer);
     allocator.free(state.draw_command_buffer);
@@ -129,3 +137,4 @@ pub const DrawCommand = struct {
 //    320*224 pix = 11800h pix = 8C00h words
 //   GP0(80h) VramToVram           works                   Freeze on large moves?
 pub const GPUType = 0x00_00_00_02;
+const VRAM_SizeBytes = 1024 * 1024; // 1 MiB

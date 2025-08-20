@@ -34,8 +34,17 @@ pub fn store_gp0_u32(psx: *PSXState, value: u32) void {
     }
 
     if (psx.gpu.gp0_copy_mode) |*copy_mode| {
-        for (0..2) |_| {
-            // FIXME Write!!!
+        const vram_typed = std.mem.bytesAsSlice(PackedRGB5A1, psx.gpu.vram);
+        const src_pixels = std.mem.bytesAsSlice(PackedRGB5A1, std.mem.asBytes(&value));
+
+        std.debug.assert(src_pixels.len == 2);
+
+        for (src_pixels) |src_pixel| {
+            const offset_y = (copy_mode.command.offset_y + copy_mode.index_y) * stride_y;
+            const offset_x = copy_mode.command.offset_x + copy_mode.index_x;
+
+            vram_typed[offset_y + offset_x] = src_pixel;
+
             copy_mode.index_x += 1;
 
             if (copy_mode.index_x == copy_mode.command.extent_x) {
@@ -69,104 +78,6 @@ pub fn store_gp0_u32(psx: *PSXState, value: u32) void {
     }
 }
 
-// FIXME normalization from viewport!
-// FIMXE Third channel isn't really needed, or at least not at that time.
-// FIXCME can we do float4(float2 , float2) in zig?
-fn packed_vertex_to_f32_3(packed_vertex: g0.PackedVertexPos) f32_3 {
-    return .{
-        @floatFromInt(packed_vertex.x),
-        @floatFromInt(packed_vertex.y),
-        0.0,
-    };
-}
-
-fn packed_color_to_f32_3(packed_vertex: g0.PackedColor) f32_3 {
-    return f32_3{
-        @floatFromInt(packed_vertex.r),
-        @floatFromInt(packed_vertex.g),
-        @floatFromInt(packed_vertex.b),
-    } * @as(f32_3, @splat(1.0 / 255.0));
-}
-
-const PhatPackedVertex = struct {
-    position: g0.PackedVertexPos,
-    color: g0.PackedColor,
-};
-
-fn push_packed_triangle_color(psx: *PSXState, op_code: g0.OpCode, v1: PhatPackedVertex, v2: PhatPackedVertex, v3: PhatPackedVertex) void {
-    const vertices = [3]PhatVertex{ .{
-        .position = packed_vertex_to_f32_3(v1.position),
-        .color = packed_color_to_f32_3(v1.color),
-    }, .{
-        .position = packed_vertex_to_f32_3(v2.position),
-        .color = packed_color_to_f32_3(v2.color),
-    }, .{
-        .position = packed_vertex_to_f32_3(v3.position),
-        .color = packed_color_to_f32_3(v3.color),
-    } };
-
-    const indices = [3]u32{
-        psx.gpu.vertex_offset + 0,
-        psx.gpu.vertex_offset + 1,
-        psx.gpu.vertex_offset + 2,
-    };
-
-    psx.gpu.draw_command_buffer[psx.gpu.draw_command_offset] = .{
-        .op_code = op_code,
-        .index_offset = psx.gpu.index_offset,
-        .index_count = indices.len,
-    };
-
-    @memcpy(psx.gpu.vertex_buffer[psx.gpu.vertex_offset..][0..vertices.len], &vertices);
-
-    @memcpy(psx.gpu.index_buffer[psx.gpu.index_offset..][0..indices.len], &indices);
-
-    // Update counters at the end
-    psx.gpu.vertex_offset += vertices.len;
-    psx.gpu.index_offset += indices.len;
-    psx.gpu.draw_command_offset += 1;
-}
-
-fn push_packed_quad_color(psx: *PSXState, op_code: g0.OpCode, v1: PhatPackedVertex, v2: PhatPackedVertex, v3: PhatPackedVertex, v4: PhatPackedVertex) void {
-    const vertices = [4]PhatVertex{ .{
-        .position = packed_vertex_to_f32_3(v1.position),
-        .color = packed_color_to_f32_3(v1.color),
-    }, .{
-        .position = packed_vertex_to_f32_3(v2.position),
-        .color = packed_color_to_f32_3(v2.color),
-    }, .{
-        .position = packed_vertex_to_f32_3(v3.position),
-        .color = packed_color_to_f32_3(v3.color),
-    }, .{
-        .position = packed_vertex_to_f32_3(v4.position),
-        .color = packed_color_to_f32_3(v4.color),
-    } };
-
-    const indices = [6]u32{
-        psx.gpu.vertex_offset + 0, // 1st triangle
-        psx.gpu.vertex_offset + 1,
-        psx.gpu.vertex_offset + 2,
-        psx.gpu.vertex_offset + 1, // 2nd triangle
-        psx.gpu.vertex_offset + 2,
-        psx.gpu.vertex_offset + 3,
-    };
-
-    psx.gpu.draw_command_buffer[psx.gpu.draw_command_offset] = .{
-        .op_code = op_code,
-        .index_offset = psx.gpu.index_offset,
-        .index_count = indices.len,
-    };
-
-    @memcpy(psx.gpu.vertex_buffer[psx.gpu.vertex_offset..][0..vertices.len], &vertices);
-
-    @memcpy(psx.gpu.index_buffer[psx.gpu.index_offset..][0..indices.len], &indices);
-
-    // Update counters at the end
-    psx.gpu.vertex_offset += vertices.len;
-    psx.gpu.index_offset += indices.len;
-    psx.gpu.draw_command_offset += 1;
-}
-
 fn execute_gp0_command(psx: *PSXState, op_code: g0.OpCode, command_bytes: []u8) void {
     switch (op_code.primary) {
         .Special => {
@@ -179,7 +90,8 @@ fn execute_gp0_command(psx: *PSXState, op_code: g0.OpCode, command_bytes: []u8) 
                     // FIXME TO IMPLEMENT
                 },
                 .FillRectangleInVRAM => {
-                    unreachable; // FIXME
+                    const fill_rectangle = std.mem.bytesAsValue(g0.FillRectangleInVRAM, command_bytes).*;
+                    fill_rectangle_vram(psx, fill_rectangle);
                 },
                 .Unknown => {
                     unreachable; // FIXME
@@ -389,7 +301,8 @@ fn execute_gp0_command(psx: *PSXState, op_code: g0.OpCode, command_bytes: []u8) 
             }
         },
         .CopyRectangleVRAMtoVRAM => {
-            unreachable;
+            const copy_rectangle = std.mem.bytesAsValue(g0.CopyRectangleInVRAM, command_bytes).*;
+            copy_rectangle_vram(psx, copy_rectangle);
         },
         .CopyRectangleCPUtoVRAM => {
             const copy_rectangle = std.mem.bytesAsValue(g0.CopyRectangleAcrossCPU, command_bytes);
@@ -568,6 +481,7 @@ pub fn consume_pending_draw(psx: *PSXState) void {
 
 fn execute_reset(psx: *PSXState) void {
     psx.gpu = .{
+        .vram = psx.gpu.vram,
         .vertex_buffer = psx.gpu.vertex_buffer,
         .index_buffer = psx.gpu.index_buffer,
         .draw_command_buffer = psx.gpu.draw_command_buffer,
@@ -592,4 +506,172 @@ fn reset_frame_data(psx: *PSXState) void {
     psx.gpu.vertex_offset = 0;
     psx.gpu.index_offset = 0;
     psx.gpu.draw_command_offset = 0;
+}
+
+// FIXME normalization from viewport!
+// FIMXE Third channel isn't really needed, or at least not at that time.
+// FIXCME can we do float4(float2 , float2) in zig?
+fn packed_vertex_to_f32_3(packed_vertex: g0.PackedVertexPos) f32_3 {
+    return .{
+        @floatFromInt(packed_vertex.x),
+        @floatFromInt(packed_vertex.y),
+        0.0,
+    };
+}
+
+fn packed_color_to_f32_3(packed_vertex: g0.PackedRGB8) f32_3 {
+    return f32_3{
+        @floatFromInt(packed_vertex.r),
+        @floatFromInt(packed_vertex.g),
+        @floatFromInt(packed_vertex.b),
+    } * @as(f32_3, @splat(1.0 / 255.0));
+}
+
+const PhatPackedVertex = struct {
+    position: g0.PackedVertexPos,
+    color: g0.PackedRGB8,
+};
+
+fn push_packed_triangle_color(psx: *PSXState, op_code: g0.OpCode, v1: PhatPackedVertex, v2: PhatPackedVertex, v3: PhatPackedVertex) void {
+    const vertices = [3]PhatVertex{ .{
+        .position = packed_vertex_to_f32_3(v1.position),
+        .color = packed_color_to_f32_3(v1.color),
+    }, .{
+        .position = packed_vertex_to_f32_3(v2.position),
+        .color = packed_color_to_f32_3(v2.color),
+    }, .{
+        .position = packed_vertex_to_f32_3(v3.position),
+        .color = packed_color_to_f32_3(v3.color),
+    } };
+
+    const indices = [3]u32{
+        psx.gpu.vertex_offset + 0,
+        psx.gpu.vertex_offset + 1,
+        psx.gpu.vertex_offset + 2,
+    };
+
+    psx.gpu.draw_command_buffer[psx.gpu.draw_command_offset] = .{
+        .op_code = op_code,
+        .index_offset = psx.gpu.index_offset,
+        .index_count = indices.len,
+    };
+
+    @memcpy(psx.gpu.vertex_buffer[psx.gpu.vertex_offset..][0..vertices.len], &vertices);
+
+    @memcpy(psx.gpu.index_buffer[psx.gpu.index_offset..][0..indices.len], &indices);
+
+    // Update counters at the end
+    psx.gpu.vertex_offset += vertices.len;
+    psx.gpu.index_offset += indices.len;
+    psx.gpu.draw_command_offset += 1;
+}
+
+fn push_packed_quad_color(psx: *PSXState, op_code: g0.OpCode, v1: PhatPackedVertex, v2: PhatPackedVertex, v3: PhatPackedVertex, v4: PhatPackedVertex) void {
+    const vertices = [4]PhatVertex{ .{
+        .position = packed_vertex_to_f32_3(v1.position),
+        .color = packed_color_to_f32_3(v1.color),
+    }, .{
+        .position = packed_vertex_to_f32_3(v2.position),
+        .color = packed_color_to_f32_3(v2.color),
+    }, .{
+        .position = packed_vertex_to_f32_3(v3.position),
+        .color = packed_color_to_f32_3(v3.color),
+    }, .{
+        .position = packed_vertex_to_f32_3(v4.position),
+        .color = packed_color_to_f32_3(v4.color),
+    } };
+
+    const indices = [6]u32{
+        psx.gpu.vertex_offset + 0, // 1st triangle
+        psx.gpu.vertex_offset + 1,
+        psx.gpu.vertex_offset + 2,
+        psx.gpu.vertex_offset + 1, // 2nd triangle
+        psx.gpu.vertex_offset + 2,
+        psx.gpu.vertex_offset + 3,
+    };
+
+    psx.gpu.draw_command_buffer[psx.gpu.draw_command_offset] = .{
+        .op_code = op_code,
+        .index_offset = psx.gpu.index_offset,
+        .index_count = indices.len,
+    };
+
+    @memcpy(psx.gpu.vertex_buffer[psx.gpu.vertex_offset..][0..vertices.len], &vertices);
+
+    @memcpy(psx.gpu.index_buffer[psx.gpu.index_offset..][0..indices.len], &indices);
+
+    // Update counters at the end
+    psx.gpu.vertex_offset += vertices.len;
+    psx.gpu.index_offset += indices.len;
+    psx.gpu.draw_command_offset += 1;
+}
+
+const stride_y = 1024; // FIXME
+
+fn copy_rectangle_vram(psx: *PSXState, copy_rectangle: g0.CopyRectangleInVRAM) void {
+    std.debug.print("CopyRectangleInVRAM: {}\n", .{copy_rectangle});
+
+    // FIXME handle mask settings
+    // FIXME assumed no overlap, but maybe that's supported?
+    // FIXME Wrapping maybe supported, we don't! Normally runtime checks raise those issues. Have faith.
+    //std.debug.assert(fill_rectangle.position_top_left.x % 0x10 == 0);
+    //std.debug.assert(fill_rectangle.size.x % 0x10 == 0);
+
+    const vram_typed = std.mem.bytesAsSlice(PackedRGB5, psx.gpu.vram);
+
+    for (0..copy_rectangle.size.y) |y| {
+        const offset_src_y = (copy_rectangle.position_top_left_src.y + y) * stride_y;
+        const offset_dst_y = (copy_rectangle.position_top_left_dst.y + y) * stride_y;
+
+        const vram_line_src = vram_typed[offset_src_y .. offset_src_y + stride_y];
+        const vram_line_dst = vram_typed[offset_dst_y .. offset_dst_y + stride_y];
+
+        const offset_src_x = copy_rectangle.position_top_left_src.x;
+        const offset_dst_x = copy_rectangle.position_top_left_dst.x;
+
+        const vram_src = vram_line_src[offset_src_x .. offset_src_x + copy_rectangle.size.x];
+        const vram_dst = vram_line_dst[offset_dst_x .. offset_dst_x + copy_rectangle.size.x];
+
+        @memcpy(vram_dst, vram_src);
+    }
+}
+
+fn fill_rectangle_vram(psx: *PSXState, fill_rectangle: g0.FillRectangleInVRAM) void {
+    std.debug.print("FillRectangleInVRAM: {}\n", .{fill_rectangle});
+
+    // FIXME Wrapping is supported, we don't! Normally runtime checks raise those issues. Have faith.
+    //std.debug.assert(fill_rectangle.position_top_left.x % 0x10 == 0);
+    //std.debug.assert(fill_rectangle.size.x % 0x10 == 0);
+    const interlaced_rendering_enabled = psx.mmio.gpu.GPUSTAT.vertical_interlace and psx.mmio.gpu.GPUSTAT.vertical_resolution == ._240lines and psx.mmio.gpu.GPUSTAT.draw_to_display_area == .Allowed;
+    std.debug.assert(!interlaced_rendering_enabled);
+
+    const fill_color_rgb5 = convert_rgb8_to_rgb5(fill_rectangle.color);
+
+    const vram_typed = std.mem.bytesAsSlice(PackedRGB5, psx.gpu.vram);
+
+    for (0..fill_rectangle.size.y) |y| {
+        const offset_y = (fill_rectangle.position_top_left.y + y) * stride_y;
+
+        const vram_type_line = vram_typed[offset_y .. offset_y + stride_y];
+
+        const offset_x = fill_rectangle.position_top_left.x;
+        const vram_type_line_rect = vram_type_line[offset_x .. offset_x + fill_rectangle.size.x];
+
+        @memset(vram_type_line_rect, fill_color_rgb5);
+    }
+}
+
+const PackedRGB5 = packed struct(u16) {
+    r: u5,
+    g: u5,
+    b: u5,
+    zero: u1 = 0,
+};
+
+fn convert_rgb8_to_rgb5(color: g0.PackedRGB8) PackedRGB5 {
+    return .{
+        .r = @intCast(color.r >> 3),
+        .g = @intCast(color.g >> 3),
+        .b = @intCast(color.b >> 3),
+    };
 }
