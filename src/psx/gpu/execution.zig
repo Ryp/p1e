@@ -40,20 +40,20 @@ pub fn store_gp0_u32(psx: *PSXState, value: u32) void {
         std.debug.assert(src_pixels.len == 2);
 
         for (src_pixels) |src_pixel| {
-            const offset_y = (copy_mode.command.offset_y + copy_mode.index_y) * stride_y;
-            const offset_x = copy_mode.command.offset_x + copy_mode.index_x;
+            const offset_y = (copy_mode.command.position_top_left.y + copy_mode.index_y) * stride_y;
+            const offset_x = copy_mode.command.position_top_left.x + copy_mode.index_x;
 
             vram_typed[offset_y + offset_x] = src_pixel;
 
             copy_mode.index_x += 1;
 
-            if (copy_mode.index_x == copy_mode.command.extent_x) {
+            if (copy_mode.index_x == copy_mode.command.size.x) {
                 copy_mode.index_x = 0;
                 copy_mode.index_y += 1;
             }
 
             // Check for end condition
-            if (copy_mode.index_y == copy_mode.command.extent_y) {
+            if (copy_mode.index_y == copy_mode.command.size.y) {
                 psx.gpu.gp0_copy_mode = null;
                 break;
             }
@@ -127,6 +127,8 @@ fn execute_gp0_command(psx: *PSXState, op_code: g0.OpCode, command_bytes: []u8) 
                             .position = quad_shaded_textured.v4_pos,
                             .color = quad_shaded_textured.v4_color,
                         });
+
+                        unreachable;
                     } else {
                         // FIXME!!!!!!
                         const tri_shaded_textured = std.mem.bytesAsValue(g0.DrawTriangleShadedTextured, command_bytes);
@@ -141,37 +143,14 @@ fn execute_gp0_command(psx: *PSXState, op_code: g0.OpCode, command_bytes: []u8) 
                             .position = tri_shaded_textured.v3_pos,
                             .color = tri_shaded_textured.v3_color,
                         });
+
+                        unreachable;
                     }
                 } else {
                     if (draw_poly.is_quad) {
-                        const quad_shaded = std.mem.bytesAsValue(g0.DrawQuadShaded, command_bytes);
-
-                        push_packed_quad_color(psx, op_code, .{
-                            .position = quad_shaded.v1_pos,
-                            .color = quad_shaded.v1_color,
-                        }, .{
-                            .position = quad_shaded.v2_pos,
-                            .color = quad_shaded.v2_color,
-                        }, .{
-                            .position = quad_shaded.v3_pos,
-                            .color = quad_shaded.v3_color,
-                        }, .{
-                            .position = quad_shaded.v4_pos,
-                            .color = quad_shaded.v4_color,
-                        });
+                        draw_quad_shaded(psx, draw_poly, std.mem.bytesAsValue(g0.DrawQuadShaded, command_bytes).*);
                     } else {
-                        const triangle_shaded = std.mem.bytesAsValue(g0.DrawTriangleShaded, command_bytes);
-
-                        push_packed_triangle_color(psx, op_code, .{
-                            .position = triangle_shaded.v1_pos,
-                            .color = triangle_shaded.v1_color,
-                        }, .{
-                            .position = triangle_shaded.v2_pos,
-                            .color = triangle_shaded.v2_color,
-                        }, .{
-                            .position = triangle_shaded.v3_pos,
-                            .color = triangle_shaded.v3_color,
-                        });
+                        draw_triangle_shaded(psx, draw_poly, std.mem.bytesAsValue(g0.DrawTriangleShaded, command_bytes).*);
                     }
                 }
             } else {
@@ -193,8 +172,10 @@ fn execute_gp0_command(psx: *PSXState, op_code: g0.OpCode, command_bytes: []u8) 
                             .position = quad_textured.v4_pos,
                             .color = quad_textured.color,
                         });
+
+                        // PORT AT THE END!
+                        // unreachable;
                     } else {
-                        // FIXMEEEEEEEEEEE
                         const triangle_textured = std.mem.bytesAsValue(g0.DrawTriangleTextured, command_bytes);
 
                         push_packed_triangle_color(psx, op_code, .{
@@ -207,6 +188,8 @@ fn execute_gp0_command(psx: *PSXState, op_code: g0.OpCode, command_bytes: []u8) 
                             .position = triangle_textured.v3_pos,
                             .color = triangle_textured.color,
                         });
+
+                        unreachable;
                     }
                 } else {
                     if (draw_poly.is_quad) {
@@ -225,6 +208,9 @@ fn execute_gp0_command(psx: *PSXState, op_code: g0.OpCode, command_bytes: []u8) 
                             .position = quad_monochrome.v4_pos,
                             .color = quad_monochrome.color,
                         });
+
+                        //PORT!
+                        // unreachable;
                     } else {
                         const triangle_monochrome = std.mem.bytesAsValue(g0.DrawTriangleMonochrome, command_bytes);
 
@@ -238,6 +224,8 @@ fn execute_gp0_command(psx: *PSXState, op_code: g0.OpCode, command_bytes: []u8) 
                             .position = triangle_monochrome.v3_pos,
                             .color = triangle_monochrome.color,
                         });
+
+                        unreachable;
                     }
                 }
             }
@@ -307,8 +295,8 @@ fn execute_gp0_command(psx: *PSXState, op_code: g0.OpCode, command_bytes: []u8) 
         .CopyRectangleCPUtoVRAM => {
             const copy_rectangle = std.mem.bytesAsValue(g0.CopyRectangleAcrossCPU, command_bytes);
 
-            std.debug.assert(copy_rectangle.extent_x > 0);
-            std.debug.assert(copy_rectangle.extent_y > 0);
+            std.debug.assert(copy_rectangle.size.x > 0);
+            std.debug.assert(copy_rectangle.size.y > 0);
 
             psx.gpu.gp0_copy_mode = .{
                 .command = copy_rectangle.*,
@@ -321,6 +309,8 @@ fn execute_gp0_command(psx: *PSXState, op_code: g0.OpCode, command_bytes: []u8) 
         .CopyRectangleVRAMtoCPU => {
             const copy_rectangle = std.mem.bytesAsValue(g0.CopyRectangleAcrossCPU, command_bytes);
             std.debug.assert(copy_rectangle.zero_b0_23 == 0);
+
+            // unreachable;
         },
         .DrawModifier => {
             switch (op_code.secondary.modifier) {
@@ -617,7 +607,7 @@ fn copy_rectangle_vram(psx: *PSXState, copy_rectangle: g0.CopyRectangleInVRAM) v
     //std.debug.assert(fill_rectangle.position_top_left.x % 0x10 == 0);
     //std.debug.assert(fill_rectangle.size.x % 0x10 == 0);
 
-    const vram_typed = std.mem.bytesAsSlice(PackedRGB5, psx.gpu.vram);
+    const vram_typed = std.mem.bytesAsSlice(PackedRGB5A1, psx.gpu.vram);
 
     for (0..copy_rectangle.size.y) |y| {
         const offset_src_y = (copy_rectangle.position_top_left_src.y + y) * stride_y;
@@ -645,9 +635,9 @@ fn fill_rectangle_vram(psx: *PSXState, fill_rectangle: g0.FillRectangleInVRAM) v
     const interlaced_rendering_enabled = psx.mmio.gpu.GPUSTAT.vertical_interlace and psx.mmio.gpu.GPUSTAT.vertical_resolution == ._240lines and psx.mmio.gpu.GPUSTAT.draw_to_display_area == .Allowed;
     std.debug.assert(!interlaced_rendering_enabled);
 
-    const fill_color_rgb5 = convert_rgb8_to_rgb5(fill_rectangle.color);
+    const fill_color_rgb5 = convert_rgb8_to_rgb5a1(fill_rectangle.color, 0);
 
-    const vram_typed = std.mem.bytesAsSlice(PackedRGB5, psx.gpu.vram);
+    const vram_typed = std.mem.bytesAsSlice(PackedRGB5A1, psx.gpu.vram);
 
     for (0..fill_rectangle.size.y) |y| {
         const offset_y = (fill_rectangle.position_top_left.y + y) * stride_y;
@@ -661,17 +651,69 @@ fn fill_rectangle_vram(psx: *PSXState, fill_rectangle: g0.FillRectangleInVRAM) v
     }
 }
 
-const PackedRGB5 = packed struct(u16) {
+pub const PackedRGB5A1 = packed struct(u16) {
     r: u5,
     g: u5,
     b: u5,
-    zero: u1 = 0,
+    a: u1,
 };
 
-fn convert_rgb8_to_rgb5(color: g0.PackedRGB8) PackedRGB5 {
+pub const PackedRGBA8 = packed struct(u32) {
+    r: u8,
+    g: u8,
+    b: u8,
+    a: u8,
+};
+
+fn convert_rgb8_to_rgb5a1(color: g0.PackedRGB8, alpha: u1) PackedRGB5A1 {
     return .{
-        .r = @intCast(color.r >> 3),
-        .g = @intCast(color.g >> 3),
-        .b = @intCast(color.b >> 3),
+        .r = @intFromFloat(@as(f32, @floatFromInt(color.r)) / 255.0 * 31.0),
+        .g = @intFromFloat(@as(f32, @floatFromInt(color.g)) / 255.0 * 31.0),
+        .b = @intFromFloat(@as(f32, @floatFromInt(color.b)) / 255.0 * 31.0),
+        .a = alpha,
     };
+}
+
+pub fn convert_rgb5a1_to_rgba8(color: PackedRGB5A1) PackedRGBA8 {
+    return .{
+        .r = @intFromFloat(@as(f32, @floatFromInt(color.r)) / 31.0 * 255.0),
+        .g = @intFromFloat(@as(f32, @floatFromInt(color.g)) / 31.0 * 255.0),
+        .b = @intFromFloat(@as(f32, @floatFromInt(color.b)) / 31.0 * 255.0),
+        .a = 255 * @as(u8, color.a),
+    };
+}
+
+fn draw_triangle_shaded(psx: *PSXState, op_code: g0.DrawPolyOpCode, triangle_shaded: g0.DrawTriangleShaded) void {
+    // PORT!
+    // unreachable;
+
+    push_packed_triangle_color(psx, .{ .secondary = .{ .draw_poly = op_code }, .primary = .DrawPoly }, .{
+        .position = triangle_shaded.v1_pos,
+        .color = triangle_shaded.v1_color,
+    }, .{
+        .position = triangle_shaded.v2_pos,
+        .color = triangle_shaded.v2_color,
+    }, .{
+        .position = triangle_shaded.v3_pos,
+        .color = triangle_shaded.v3_color,
+    });
+}
+
+fn draw_quad_shaded(psx: *PSXState, op_code: g0.DrawPolyOpCode, quad_shaded: g0.DrawQuadShaded) void {
+    // PORT!
+    // unreachable;
+
+    push_packed_quad_color(psx, .{ .secondary = .{ .draw_poly = op_code }, .primary = .DrawPoly }, .{
+        .position = quad_shaded.v1_pos,
+        .color = quad_shaded.v1_color,
+    }, .{
+        .position = quad_shaded.v2_pos,
+        .color = quad_shaded.v2_color,
+    }, .{
+        .position = quad_shaded.v3_pos,
+        .color = quad_shaded.v3_color,
+    }, .{
+        .position = quad_shaded.v4_pos,
+        .color = quad_shaded.v4_color,
+    });
 }
