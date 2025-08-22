@@ -5,7 +5,7 @@ const mmio = @import("mmio.zig");
 
 const Magic = "P1ES"; // PlayStation 1 Emulator Save
 const VersionMajor = 0; // Format version
-const VersionMinor = 5;
+const VersionMinor = 6;
 const VersionPatch = 0;
 
 // FIXME do somthing with this

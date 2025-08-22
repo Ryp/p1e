@@ -246,7 +246,7 @@ pub fn main(psx: *psx_state.PSXState, allocator: std.mem.Allocator) !void {
         c.glfwPollEvents();
         c.glfwGetFramebufferSize(window, &w, &h);
 
-        while (!psx.gpu.pending_draw) {
+        while (!psx.gpu.backend.pending_draw) {
             cpu_execution.step(psx);
         }
 
@@ -285,16 +285,18 @@ pub fn main(psx: *psx_state.PSXState, allocator: std.mem.Allocator) !void {
             const data_ptr: [*]f32 = @ptrCast(@alignCast(data));
             var data_index: u32 = 0;
 
-            for (psx.gpu.draw_command_buffer[0..psx.gpu.draw_command_offset], 0..) |draw_command, command_index| {
+            for (psx.gpu.backend.draw_command_buffer[0..psx.gpu.backend.draw_command_offset], 0..) |draw_command, command_index| {
                 std.debug.print("Command index = {}\n", .{command_index});
-                for (psx.gpu.index_buffer[draw_command.index_offset .. draw_command.index_offset + draw_command.index_count]) |index| {
-                    const phat_vertex = psx.gpu.vertex_buffer[index];
-                    data_ptr[data_index + 0] = phat_vertex.position[0] / 1024.0;
-                    data_ptr[data_index + 1] = phat_vertex.position[1] / 512.0;
+                for (psx.gpu.backend.index_buffer[draw_command.index_offset .. draw_command.index_offset + draw_command.index_count]) |index| {
+                    const phat_vertex = psx.gpu.backend.vertex_buffer[index];
+                    data_ptr[data_index + 0] = phat_vertex.pos[0] / 1024.0;
+                    data_ptr[data_index + 1] = phat_vertex.pos[1] / 512.0;
                     data_ptr[data_index + 2] = phat_vertex.color[0];
                     data_ptr[data_index + 3] = phat_vertex.color[1];
                     data_ptr[data_index + 4] = phat_vertex.color[2];
-                    data_index += 5;
+                    data_ptr[data_index + 5] = phat_vertex.tex[0]; // FIXME
+                    data_ptr[data_index + 6] = phat_vertex.tex[1]; // FIXME
+                    data_index += 7;
                 }
                 vertex_count += draw_command.index_count;
             }

@@ -2,7 +2,7 @@
 
 VK_BINDING(0, 0) ByteAddressBuffer vertex_buffer;
 
-static const uint vertex_size_bytes = 5 * 4;
+static const uint vertex_size_bytes = 7 * 4;
 
 float2 pull_position(ByteAddressBuffer byte_buffer, uint vertex_id)
 {

@@ -8,6 +8,7 @@ const Registers = cpu.Registers;
 
 const mmio = @import("../mmio.zig");
 const exe_sideloading = @import("../exe_sideloading.zig");
+const save_state = @import("../save_state.zig");
 
 const instructions = @import("instructions.zig");
 const debug = @import("debug.zig");
@@ -27,6 +28,25 @@ pub fn step(psx: *PSXState) void {
 
             exe_sideloading.load(psx, exe_file.deprecatedReader()) catch |err| {
                 std.debug.print("Failed to load exe: {}\n", .{err});
+            };
+        }
+    }
+
+    if (false) {
+        if (psx.step_index == 81674907) {
+            @branchHint(.cold);
+            var save_state_file = if (std.fs.cwd().createFile("tex.p1es", .{
+                .read = true,
+                .truncate = true,
+                .exclusive = false, // Set to true will ensure this file is created by us
+            })) |f| f else |err| {
+                std.debug.print("Failed to create save state file: {}\n", .{err});
+                return;
+            };
+            defer save_state_file.close();
+
+            save_state.save(psx.*, save_state_file.deprecatedWriter()) catch |err| {
+                std.debug.print("Failed to save state: {}\n", .{err});
             };
         }
     }

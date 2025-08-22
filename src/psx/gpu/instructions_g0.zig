@@ -1,8 +1,9 @@
 const std = @import("std");
 
 const mmio = @import("mmio.zig");
+const PackedRGB8 = @import("pixel_format.zig").PackedRGB8;
 
-pub fn get_command_size_bytes(op_code: OpCode) usize {
+pub fn get_command_size_bytes(op_code: OpCode) u32 {
     switch (op_code.primary) {
         .Special => {
             switch (op_code.secondary.special) {
@@ -16,18 +17,18 @@ pub fn get_command_size_bytes(op_code: OpCode) usize {
 
             if (poly.is_shaded) {
                 if (poly.is_textured) {
-                    const words: usize = if (poly.is_quad) 12 else 9;
+                    const words: u32 = if (poly.is_quad) 12 else 9;
                     return words * 4;
                 } else {
-                    const words: usize = if (poly.is_quad) 8 else 6;
+                    const words: u32 = if (poly.is_quad) 8 else 6;
                     return words * 4;
                 }
             } else { // !poly.is_shaded
                 if (poly.is_textured) {
-                    const words: usize = if (poly.is_quad) 9 else 7;
+                    const words: u32 = if (poly.is_quad) 9 else 7;
                     return words * 4;
                 } else {
-                    const words: usize = if (poly.is_quad) 5 else 4;
+                    const words: u32 = if (poly.is_quad) 5 else 4;
                     return words * 4;
                 }
             }
@@ -39,10 +40,10 @@ pub fn get_command_size_bytes(op_code: OpCode) usize {
             const rect = op_code.secondary.draw_rect;
 
             if (rect.is_textured) {
-                const words: usize = if (rect.size == .Variable) 4 else 3;
+                const words: u32 = if (rect.size == .Variable) 4 else 3;
                 return words * 4;
             } else {
-                const words: usize = if (rect.size == .Variable) 3 else 2;
+                const words: u32 = if (rect.size == .Variable) 3 else 2;
                 return words * 4;
             }
         },
@@ -50,10 +51,10 @@ pub fn get_command_size_bytes(op_code: OpCode) usize {
             return 4 * 4;
         },
         .CopyRectangleCPUtoVRAM => {
-            return 3 * 4; // FIXME Variable
+            return 3 * 4;
         },
         .CopyRectangleVRAMtoCPU => {
-            return 3 * 4; // FIXME Variable
+            return 3 * 4;
         },
         .DrawModifier => {
             return 4;
@@ -139,8 +140,8 @@ const ModifierOpCode = enum(u5) {
 // 36h = 0011 0110b GP0(36h) - Shaded Textured three-point polygon, semi-transparent, tex-blend
 // 3Ch = 0011 1100b GP0(3Ch) - Shaded Textured four-point polygon, opaque, texture-blending
 // 3Eh = 0011 1110b GP0(3Eh) - Shaded Textured four-point polygon, semi-transparent, tex-blend
-const DrawPolyOpCode = packed struct(u5) {
-    raw_texture: bool, // Used when is_textured is set. 0 = texture blending, 1 = raw texture
+pub const DrawPolyOpCode = packed struct(u5) {
+    texture_mode: DrawTextureMode,
     is_semi_transparent: bool,
     is_textured: bool,
     is_quad: bool,
@@ -172,8 +173,8 @@ const DrawPolyOpCode = packed struct(u5) {
 // 7Dh = 0111 1101b GP0(7Dh) - Textured Rectangle, 16x16, opaque, raw-texture
 // 7Eh = 0111 1110b GP0(7Eh) - Textured Rectangle, 16x16, semi-transparent, texture-blending
 // 7Fh = 0111 1111b GP0(7Fh) - Textured Rectangle, 16x16, semi-transparent, raw-texture
-const DrawRectOpCode = packed struct(u5) {
-    raw_texture: bool, // Used when is_textured is set. 0 = texture blending, 1 = raw texture
+pub const DrawRectOpCode = packed struct(u5) {
+    texture_mode: DrawTextureMode,
     is_semi_transparent: bool,
     is_textured: bool,
     size: enum(u2) {
@@ -182,6 +183,11 @@ const DrawRectOpCode = packed struct(u5) {
         _8x8,
         _16x16,
     },
+};
+
+const DrawTextureMode = enum(u1) {
+    Blended,
+    Raw,
 };
 
 //       ___S PTt0
@@ -243,11 +249,11 @@ pub const DrawTriangleTextured = packed struct {
 
     v1_pos: PackedVertexPos,
     v1_texcoord: PackedTexCoord,
-    palette: u16,
+    palette: PackedClut,
 
     v2_pos: PackedVertexPos,
     v2_texcoord: PackedTexCoord,
-    tex_page: u16,
+    tex_page: PackedTexPage,
 
     v3_pos: PackedVertexPos,
     v3_texcoord: PackedTexCoord,
@@ -259,11 +265,11 @@ pub const DrawQuadTextured = packed struct {
     op_code: OpCode,
     v1_pos: PackedVertexPos,
     v1_texcoord: PackedTexCoord,
-    palette: u16,
+    palette: PackedClut,
 
     v2_pos: PackedVertexPos,
     v2_texcoord: PackedTexCoord,
-    tex_page: u16,
+    tex_page: PackedTexPage,
 
     v3_pos: PackedVertexPos,
     v3_texcoord: PackedTexCoord,
@@ -311,13 +317,13 @@ pub const DrawTriangleShadedTextured = packed struct {
     op_code: OpCode,
     v1_pos: PackedVertexPos,
     v1_texcoord: PackedTexCoord,
-    palette: u16,
+    palette: PackedClut,
 
     v2_color: PackedRGB8,
     v2_unused: u8,
     v2_pos: PackedVertexPos,
     v2_texcoord: PackedTexCoord,
-    tex_page: u16,
+    tex_page: PackedTexPage,
 
     v3_color: PackedRGB8,
     v3_unused: u8,
@@ -331,13 +337,13 @@ pub const DrawQuadShadedTextured = packed struct {
     op_code: OpCode,
     v1_pos: PackedVertexPos,
     v1_texcoord: PackedTexCoord,
-    palette: u16,
+    palette: PackedClut,
 
     v2_color: PackedRGB8,
     v2_unused: u8,
     v2_pos: PackedVertexPos,
     v2_texcoord: PackedTexCoord,
-    tex_page: u16,
+    tex_page: PackedTexPage,
 
     v3_color: PackedRGB8,
     v3_unused: u8,
@@ -385,15 +391,30 @@ pub const PackedVertexPos = packed struct(u32) {
     y: u16,
 };
 
-pub const PackedRGB8 = packed struct(u24) {
-    r: u8,
-    g: u8,
-    b: u8,
-};
-
 pub const PackedTexCoord = packed struct(u16) {
     x: u8,
     y: u8,
+};
+
+pub const PackedClut = packed struct(u16) {
+    x: u6, //   0-5      X coordinate X/16  (ie. in 16-halfword steps)
+    y: u9, // 6-14     Y coordinate 0-511 (ie. in 1-line steps)
+    zero: u1,
+};
+
+pub const PackedTexPage = packed struct(u16) {
+    // 0-8    Same as GP0(E1h).Bit0-8 (see there)
+    texture_x_base: u4,
+    texture_y_base: u1,
+    semi_transparency_mode: mmio.MMIO.Packed.SemiTransparency,
+    texture_page_colors: mmio.MMIO.Packed.TexturePageColors,
+
+    unused_b9_10: u2, // 9-10   Unused (does NOT change GP0(E1h).Bit9-10)
+
+    texture_disable: u1, // 11     Same as GP0(E1h).Bit11  (see there)
+
+    unused_b12_13: u2, // 12-13  Unused (does NOT change GP0(E1h).Bit12-13)
+    zero_b14_15: u2, // 14-15  Unused (should be 0)
 };
 
 pub const CopyRectangleInVRAM = packed struct(u128) {
@@ -407,16 +428,14 @@ pub const CopyRectangleInVRAM = packed struct(u128) {
 pub const CopyRectangleAcrossCPU = packed struct(u96) {
     zero_b0_23: u24,
     op_code: OpCode,
-    offset_x: u16,
-    offset_y: u16,
-    extent_x: u16,
-    extent_y: u16,
+    position_top_left: PackedVertexPos,
+    size: PackedVertexPos,
 };
 
 pub const SetDrawMode = packed struct(u32) {
     texture_x_base: u4,
     texture_y_base: u1,
-    semi_transparency: u2,
+    semi_transparency_mode: mmio.MMIO.Packed.SemiTransparency,
     texture_page_colors: mmio.MMIO.Packed.TexturePageColors,
     dither_mode: u1,
     draw_to_display_area: mmio.MMIO.Packed.DrawToDisplayArea,

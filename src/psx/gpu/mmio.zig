@@ -9,16 +9,9 @@ pub fn load_mmio_u32(psx: *PSXState, offset: u29) u32 {
     std.debug.assert(offset < MMIO.OffsetEnd);
     std.debug.assert(offset >= MMIO.Offset);
 
-    const type_slice = mmio.get_mutable_mmio_slice_generic(u32, psx, offset);
-
     switch (offset) {
         MMIO.GPUREAD_Offset => {
-            const value = std.mem.readInt(u32, type_slice, .little);
-
-            std.debug.assert(value == 0);
-
-            std.debug.print("MMIO GPU READ: {x}\n", .{psx.gpu.gp_read_data});
-            return psx.gpu.gp_read_data; // FIXME
+            return execution.load_gpuread_u32(psx);
         },
         MMIO.GPUSTAT_Offset => {
             // Update read-only registers
@@ -34,8 +27,6 @@ pub fn load_mmio_u32(psx: *PSXState, offset: u29) u32 {
             stat_value.vertical_resolution = ._240lines; // FIXME
             const stat_u32: u32 = @bitCast(stat_value);
             return stat_u32;
-
-            // return std.mem.readInt(u32, type_slice, .little);
         },
         else => unreachable,
     }
@@ -79,14 +70,14 @@ const MMIO_GPU = packed struct {
     // 1F801810h.Read  4   GPUREAD Read responses to GP0(C0h) and GP1(10h) commands
     // 1F801810h.Write 4   GP0 Send GP0 Commands/Packets (Rendering and VRAM Access)
     GPUREAD: packed struct {
-        todo: u32 = 0, // FIXME
+        zero: u32 = 0, // Never used directly, let's keep it to zero
     } = .{},
     // 1F801814h.Read  4   GPUSTAT Read GPU Status Register
     // 1F801814h.Write 4   GP1 Send GP1 Commands (Display Control)
     GPUSTAT: packed struct { // Read-only
         texture_x_base: u4 = 0, // 0-3   Texture page X Base   (N*64)                              ;GP0(E1h).0-3
         texture_y_base: u1 = 0, // 4     Texture page Y Base   (N*256) (ie. 0 or 256)              ;GP0(E1h).4
-        semi_transparency: u2 = 0, // 5-6   Semi Transparency     (0=B/2+F/2, 1=B+F, 2=B-F, 3=B+F/4)  ;GP0(E1h).5-6
+        semi_transparency_mode: SemiTransparency = .B_half_plus_F_half, // 5-6   Semi Transparency     (0=B/2+F/2, 1=B+F, 2=B-F, 3=B+F/4)  ;GP0(E1h).5-6
         texture_page_colors: TexturePageColors = ._4bits, // 7-8 Texture page colors   (0=4bit, 1=8bit, 2=15bit, 3=Reserved)GP0(E1h).7-8
         dither_mode: u1 = 0, // 9 Dither 24bit to 15bit (0=Off/strip LSBs, 1=Dither Enabled);GP0(E1h).9
         draw_to_display_area: DrawToDisplayArea = .Prohibited, //   10    Drawing to display area (0=Prohibited, 1=Allowed)         ;GP0(E1h).10
@@ -132,6 +123,13 @@ const MMIO_GPU = packed struct {
         // Bit25: This is the DMA Request bit, however, the bit is also useful for non-DMA transfers, especially in the FIFO State mode.
     } = .{},
     _unused: u64 = undefined,
+
+    pub const SemiTransparency = enum(u2) {
+        B_half_plus_F_half = 0,
+        B_plus_F = 1,
+        B_minus_F = 2,
+        B_plus_F_quarter = 3,
+    };
 
     pub const TexturePageColors = enum(u2) {
         _4bits,

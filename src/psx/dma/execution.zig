@@ -23,8 +23,13 @@ pub fn execute_dma_transfer(psx: *PSXState, channel: *dma_mmio.DMAChannel, chann
                 switch (channel.channel_control.transfer_direction) {
                     .ToRAM => {
                         switch (channel_index) {
-                            .Channel0_MDEC_IN, .Channel1_MDEC_OUT, .Channel2_GPU, .Channel3_SPU, .Channel4_CDROM, .Channel5_PIO => {
+                            .Channel0_MDEC_IN, .Channel1_MDEC_OUT, .Channel3_SPU, .Channel4_CDROM, .Channel5_PIO => {
+                                std.debug.print("DMA transfer to RAM on channel {} not implemented yet\n", .{channel_index});
                                 unreachable;
+                            },
+                            .Channel2_GPU => {
+                                const command_word = gpu_execution.load_gpuread_u32(psx);
+                                mmio.store_u32(psx, address_masked, command_word);
                             },
                             .Channel6_OTC => {
                                 const src_word = switch (word_count_left) {
