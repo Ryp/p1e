@@ -6,9 +6,11 @@ pub fn build(b: *std.Build) void {
 
     const exe = b.addExecutable(.{
         .name = "p1e",
-        .root_source_file = b.path("src/main.zig"),
-        .optimize = optimize,
-        .target = target,
+        .root_module = b.createModule(.{
+            .root_source_file = b.path("src/main.zig"),
+            .target = target,
+            .optimize = optimize,
+        }),
     });
 
     const default_bios_path = b.path("external/bios/SCPH1001.bin");
@@ -80,8 +82,11 @@ pub fn build(b: *std.Build) void {
     // Test
     const test_a = b.addTest(.{
         .name = "test",
-        .root_source_file = b.path("src/test.zig"),
-        .optimize = optimize,
+        .root_module = b.createModule(.{
+            .root_source_file = b.path("src/test.zig"),
+            .target = target,
+            .optimize = optimize,
+        }),
     });
 
     b.installArtifact(test_a);

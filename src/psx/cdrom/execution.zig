@@ -13,12 +13,12 @@ pub fn execute_command(psx: *PSXState, command_byte: u8) void {
         .Getstat => {
             std.debug.print("CDROM GetStat: {}\n", .{psx.cdrom.stat});
 
-            psx.cdrom.response_fifo.writeItem(@bitCast(psx.cdrom.stat)) catch unreachable;
+            psx.cdrom.response_fifo.push(@bitCast(psx.cdrom.stat)) catch unreachable;
 
             request_cdrom_interrupt(psx, 3);
         },
         .Test => {
-            const sub_command: TestSubCommand = @enumFromInt(psx.cdrom.parameter_fifo.readItem().?);
+            const sub_command: TestSubCommand = @enumFromInt(psx.cdrom.parameter_fifo.pop() catch unreachable);
 
             std.debug.print("CDROM Test command: {}\n", .{sub_command});
 
@@ -27,10 +27,10 @@ pub fn execute_command(psx: *PSXState, command_byte: u8) void {
                     std.debug.print("GET DATE BCD\n", .{});
 
                     const bios_version = HC05ControllerBiosVersionBCD_PU22;
-                    psx.cdrom.response_fifo.writeItem(bios_version.year) catch unreachable;
-                    psx.cdrom.response_fifo.writeItem(bios_version.month) catch unreachable;
-                    psx.cdrom.response_fifo.writeItem(bios_version.day) catch unreachable;
-                    psx.cdrom.response_fifo.writeItem(bios_version.version) catch unreachable;
+                    psx.cdrom.response_fifo.push(bios_version.year) catch unreachable;
+                    psx.cdrom.response_fifo.push(bios_version.month) catch unreachable;
+                    psx.cdrom.response_fifo.push(bios_version.day) catch unreachable;
+                    psx.cdrom.response_fifo.push(bios_version.version) catch unreachable;
 
                     request_cdrom_interrupt(psx, 3);
                 },

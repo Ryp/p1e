@@ -16,9 +16,9 @@ pub fn load_mmio_u8(psx: *PSXState, offset: u29) u8 {
             // Update status
             psx.mmio.cdrom.index_status.status = .{
                 .ADPBUSY = false, // FIXME
-                .PRMEMPT = psx.cdrom.parameter_fifo.writableLength() == psx.cdrom.parameter_fifo.buf.len,
-                .PRMWRDY = psx.cdrom.parameter_fifo.writableLength() > 0,
-                .RSLRRDY = psx.cdrom.response_fifo.readableLength() > 0,
+                .PRMEMPT = psx.cdrom.parameter_fifo.is_empty(),
+                .PRMWRDY = !psx.cdrom.parameter_fifo.is_full(),
+                .RSLRRDY = !psx.cdrom.response_fifo.is_empty(),
                 .DRQSTS = false, // FIXME
                 .BUSYSTS = false, // FIXME
             };
@@ -40,7 +40,7 @@ pub fn load_mmio_u8(psx: *PSXState, offset: u29) u8 {
                     switch (offset) {
                         MMIO.CommandPort1_Offset => {
                             // FIXME
-                            const response = psx.cdrom.response_fifo.readItem().?;
+                            const response = psx.cdrom.response_fifo.pop() catch unreachable;
                             std.debug.print("Read response FIFO (got {x})\n", .{response});
                             return response;
                         },
@@ -106,7 +106,7 @@ pub fn store_mmio_u8(psx: *PSXState, offset: u29, value: u8) void {
                             const parameter: @TypeOf(bank.parameter_fifo) = @bitCast(value);
                             std.debug.print("CDROM wrote parameter: {}\n", .{parameter});
 
-                            psx.cdrom.parameter_fifo.writeItem(parameter) catch unreachable;
+                            psx.cdrom.parameter_fifo.push(parameter) catch unreachable;
                         },
                         MMIO.CommandPort3_Offset => {
                             const request: @TypeOf(bank.request) = @bitCast(value);
@@ -137,7 +137,7 @@ pub fn store_mmio_u8(psx: *PSXState, offset: u29, value: u8) void {
                             std.debug.assert(!interrupt_flag_write.b7_CHPRST);
 
                             if (interrupt_flag_write.b6_CLRPRM) {
-                                psx.cdrom.parameter_fifo.discard(psx.cdrom.parameter_fifo.count);
+                                psx.cdrom.parameter_fifo.discard();
                                 std.debug.print("RESET PARAM FIFO\n", .{});
                             }
 

@@ -22,7 +22,7 @@ pub fn step(psx: *PSXState) void {
         };
         defer exe_file.close();
 
-        exe_sideloading.load(psx, exe_file.reader()) catch |err| {
+        exe_sideloading.load(psx, exe_file.deprecatedReader()) catch |err| {
             std.debug.print("Failed to load exe: {}\n", .{err});
         };
     }
@@ -33,11 +33,14 @@ pub fn step(psx: *PSXState) void {
     if ((address_typed.offset == 0xA0 and t1_value == 0x3C) or (address_typed.offset == 0xB0 and t1_value == 0x3D)) {
         const char: u8 = @truncate(load_reg(psx.cpu.regs, .a0));
 
-        // Print on stdout
-        const outw = std.io.getStdOut().writer();
-        outw.print("{c}", .{char}) catch |err| {
+        var stdout_buffer: [1024]u8 = undefined;
+        var stdout_writer = std.fs.File.stdout().writer(&stdout_buffer);
+        const stdout = &stdout_writer.interface;
+
+        stdout.print("{c}", .{char}) catch |err| {
             std.debug.print("Error writing to stdout: {}\n", .{err});
         };
+        stdout.flush() catch unreachable;
     }
 
     psx.cpu.regs.current_instruction_pc = psx.cpu.regs.pc;
