@@ -250,7 +250,7 @@ pub fn main(psx: *psx_state.PSXState, allocator: std.mem.Allocator) !void {
             cpu_execution.step(psx);
         }
 
-        const fence_wait_result = try gc.dev.waitForFences(1, @ptrCast(&gc.frame_fence), vk.TRUE, std.math.maxInt(u64));
+        const fence_wait_result = try gc.dev.waitForFences(1, @ptrCast(&gc.frame_fence), .true, std.math.maxInt(u64));
         std.debug.assert(fence_wait_result == .success);
 
         try gc.dev.resetFences(1, @ptrCast(&gc.frame_fence));
@@ -346,7 +346,7 @@ pub fn main(psx: *psx_state.PSXState, allocator: std.mem.Allocator) !void {
         gpu_execution.consume_pending_draw(psx);
     }
 
-    const result = try gc.dev.waitForFences(1, @ptrCast(&gc.frame_fence), vk.TRUE, std.math.maxInt(u64));
+    const result = try gc.dev.waitForFences(1, @ptrCast(&gc.frame_fence), .true, std.math.maxInt(u64));
     std.debug.assert(result == .success);
 
     try gc.dev.deviceWaitIdle();
@@ -360,9 +360,10 @@ fn record_command_buffer(
     vertex_count: u32,
 ) !void {
     if (swapchain.needs_transition) {
-        var image_barriers = try std.BoundedArray(vk.ImageMemoryBarrier2, 8).init(swapchain.swap_images.len);
+        var image_barriers_buf: [8]vk.ImageMemoryBarrier2 = undefined;
+        const image_barriers = image_barriers_buf[0..swapchain.swap_images.len];
 
-        for (swapchain.swap_images, 0..) |swapchain_image, swapchain_image_index| {
+        for (swapchain.swap_images, image_barriers, 0..) |swapchain_image, *image_barrier, swapchain_image_index| {
             const src = swapchain_access_initial;
             const dst = if (swapchain_image_index == swapchain.image_index)
                 swapchain_access_render
@@ -371,10 +372,10 @@ fn record_command_buffer(
 
             const subresource = default_texture_subresource_one_color_mip(0, 0);
 
-            image_barriers.slice()[swapchain_image_index] = get_vk_image_barrier(swapchain_image.image, subresource, src, dst, 0, 0);
+            image_barrier.* = get_vk_image_barrier(swapchain_image.image, subresource, src, dst, 0, 0);
         }
 
-        const dependencies = get_vk_image_barrier_depency_info(image_barriers.constSlice());
+        const dependencies = get_vk_image_barrier_depency_info(image_barriers);
 
         gc.dev.cmdPipelineBarrier2(cmdbuf, &dependencies);
 
@@ -496,7 +497,7 @@ fn createPipeline(
 
     const piasci = vk.PipelineInputAssemblyStateCreateInfo{
         .topology = .triangle_list,
-        .primitive_restart_enable = vk.FALSE,
+        .primitive_restart_enable = .false,
     };
 
     const pvsci = vk.PipelineViewportStateCreateInfo{
@@ -507,12 +508,12 @@ fn createPipeline(
     };
 
     const prsci = vk.PipelineRasterizationStateCreateInfo{
-        .depth_clamp_enable = vk.FALSE,
-        .rasterizer_discard_enable = vk.FALSE,
+        .depth_clamp_enable = .false,
+        .rasterizer_discard_enable = .false,
         .polygon_mode = .fill,
         .cull_mode = .{ .back_bit = false },
         .front_face = .clockwise,
-        .depth_bias_enable = vk.FALSE,
+        .depth_bias_enable = .false,
         .depth_bias_constant_factor = 0,
         .depth_bias_clamp = 0,
         .depth_bias_slope_factor = 0,
@@ -521,14 +522,14 @@ fn createPipeline(
 
     const pmsci = vk.PipelineMultisampleStateCreateInfo{
         .rasterization_samples = .{ .@"1_bit" = true },
-        .sample_shading_enable = vk.FALSE,
+        .sample_shading_enable = .false,
         .min_sample_shading = 1,
-        .alpha_to_coverage_enable = vk.FALSE,
-        .alpha_to_one_enable = vk.FALSE,
+        .alpha_to_coverage_enable = .false,
+        .alpha_to_one_enable = .false,
     };
 
     const pcbas = vk.PipelineColorBlendAttachmentState{
-        .blend_enable = vk.FALSE,
+        .blend_enable = .false,
         .src_color_blend_factor = .one,
         .dst_color_blend_factor = .zero,
         .color_blend_op = .add,
@@ -539,7 +540,7 @@ fn createPipeline(
     };
 
     const pcbsci = vk.PipelineColorBlendStateCreateInfo{
-        .logic_op_enable = vk.FALSE,
+        .logic_op_enable = .false,
         .logic_op = .copy,
         .attachment_count = 1,
         .p_attachments = @ptrCast(&pcbas),

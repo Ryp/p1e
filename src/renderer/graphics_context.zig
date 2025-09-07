@@ -3,66 +3,50 @@ const vk = @import("vulkan");
 const c = @import("c.zig");
 const Allocator = std.mem.Allocator;
 
-const required_instance_extensions = [_][*:0]const u8{
-    vk.extensions.ext_debug_utils.name,
-};
+const required_device_extensions = [_][*:0]const u8{vk.extensions.khr_swapchain.name};
 
-const enabled_instance_layers = [_][*:0]const u8{
-    "VK_LAYER_KHRONOS_validation",
-};
+/// There are 3 levels of bindings in vulkan-zig:
+/// - The Dispatch types (vk.BaseDispatch, vk.InstanceDispatch, vk.DeviceDispatch)
+///   are "plain" structs which just contain the function pointers for a particular
+///   object.
+/// - The Wrapper types (vk.Basewrapper, vk.InstanceWrapper, vk.DeviceWrapper) contains
+///   the Dispatch type, as well as Ziggified Vulkan functions - these return Zig errors,
+///   etc.
+/// - The Proxy types (vk.InstanceProxy, vk.DeviceProxy, vk.CommandBufferProxy,
+///   vk.QueueProxy) contain a pointer to a Wrapper and also contain the object's handle.
+///   Calling Ziggified functions on these types automatically passes the handle as
+///   the first parameter of each function. Note that this type accepts a pointer to
+///   a wrapper struct as there is a problem with LLVM where embedding function pointers
+///   and object pointer in the same struct leads to missed optimizations. If the wrapper
+///   member is a pointer, LLVM will try to optimize it as any other vtable.
+/// The wrappers contain
+const BaseWrapper = vk.BaseWrapper;
+const InstanceWrapper = vk.InstanceWrapper;
+const DeviceWrapper = vk.DeviceWrapper;
 
-const required_device_extensions = [_][*:0]const u8{
-    vk.extensions.khr_swapchain.name,
-};
-
-/// To construct base, instance and device wrappers for vulkan-zig, you need to pass a list of 'apis' to it.
-const apis: []const vk.ApiInfo = &.{
-    // You can either add invidiual functions by manually creating an 'api'
-    .{
-        .base_commands = .{
-            .createInstance = true,
-        },
-        .instance_commands = .{
-            .createDevice = true,
-        },
-    },
-    // Or you can add entire feature sets or extensions
-    vk.features.version_1_0,
-    vk.features.version_1_3,
-    vk.extensions.ext_debug_utils,
-    vk.extensions.khr_surface,
-    vk.extensions.khr_swapchain,
-};
-
-/// Next, pass the `apis` to the wrappers to create dispatch tables.
-const BaseDispatch = vk.BaseWrapper(apis);
-const InstanceDispatch = vk.InstanceWrapper(apis);
-const DeviceDispatch = vk.DeviceWrapper(apis);
-
-// Also create some proxying wrappers, which also have the respective handles
-const Instance = vk.InstanceProxy(apis);
-const Device = vk.DeviceProxy(apis);
+const Instance = vk.InstanceProxy;
+const Device = vk.DeviceProxy;
 
 pub const GraphicsContext = struct {
-    pub const CommandBuffer = vk.CommandBufferProxy(apis);
+    pub const CommandBuffer = vk.CommandBufferProxy;
     pub const StagingBufferSizeBytes = 1024 * 1024 * 8;
 
     allocator: Allocator,
 
-    vkb: BaseDispatch,
+    vkb: BaseWrapper,
 
     instance: Instance,
+    debug_messenger: vk.DebugUtilsMessengerEXT,
     surface: vk.SurfaceKHR,
     pdev: vk.PhysicalDevice,
     props: vk.PhysicalDeviceProperties,
     mem_props: vk.PhysicalDeviceMemoryProperties,
+
     frame_fence: vk.Fence,
     image_acquired: vk.Semaphore,
     render_finished: vk.Semaphore,
     staging_memory: vk.DeviceMemory,
     staging_buffer: vk.Buffer,
-
-    debug_utils_messenger: vk.DebugUtilsMessengerEXT,
 
     dev: Device,
     graphics_queue: Queue,
@@ -71,70 +55,56 @@ pub const GraphicsContext = struct {
     pub fn init(allocator: Allocator, app_name: [*:0]const u8, window: *c.GLFWwindow) !GraphicsContext {
         var self: GraphicsContext = undefined;
         self.allocator = allocator;
-        self.vkb = try BaseDispatch.load(c.glfwGetInstanceProcAddress);
+        self.vkb = BaseWrapper.load(c.glfwGetInstanceProcAddress);
+
+        var extension_names: std.ArrayList([*:0]const u8) = .empty;
+        defer extension_names.deinit(allocator);
+        try extension_names.append(allocator, vk.extensions.ext_debug_utils.name);
+        // the following extensions are to support vulkan in mac os
+        // see https://github.com/glfw/glfw/issues/2335
+        try extension_names.append(allocator, vk.extensions.khr_portability_enumeration.name);
+        try extension_names.append(allocator, vk.extensions.khr_get_physical_device_properties_2.name);
 
         var glfw_exts_count: u32 = 0;
         const glfw_exts = c.glfwGetRequiredInstanceExtensions(&glfw_exts_count);
-
-        const propsv_instance = try self.vkb.enumerateInstanceExtensionPropertiesAlloc(null, allocator);
-        defer allocator.free(propsv_instance);
-
-        for (required_instance_extensions) |ext| {
-            for (propsv_instance) |props| {
-                if (std.mem.eql(u8, std.mem.span(ext), std.mem.sliceTo(&props.extension_name, 0))) {
-                    break;
-                }
-            } else {
-                std.debug.print("required instance extension {s} not supported\n", .{ext});
-                unreachable;
-            }
-        }
-
-        var enabled_instance_extensions = try allocator.alloc([*:0]const u8, glfw_exts_count + required_instance_extensions.len);
-        defer allocator.free(enabled_instance_extensions);
-
-        if (glfw_exts_count > 0) {
-            for (enabled_instance_extensions[0..glfw_exts_count], glfw_exts[0..glfw_exts_count]) |*ext, glfw_ext| {
-                ext.* = glfw_ext;
-            }
-        }
-
-        for (enabled_instance_extensions[glfw_exts_count..], required_instance_extensions) |*ext, required_ext_name| {
-            ext.* = required_ext_name;
-        }
-
-        const app_info = vk.ApplicationInfo{
-            .p_application_name = app_name,
-            .application_version = vk.makeApiVersion(0, 0, 0, 0),
-            .p_engine_name = app_name,
-            .engine_version = vk.makeApiVersion(0, 0, 0, 0),
-            .api_version = vk.API_VERSION_1_3,
-        };
+        try extension_names.appendSlice(allocator, @ptrCast(glfw_exts[0..glfw_exts_count]));
 
         const instance = try self.vkb.createInstance(&.{
-            .p_application_info = &app_info,
-            .enabled_layer_count = @intCast(enabled_instance_layers.len),
-            .pp_enabled_layer_names = @ptrCast(&enabled_instance_layers),
-            .enabled_extension_count = @intCast(enabled_instance_extensions.len),
-            .pp_enabled_extension_names = @ptrCast(enabled_instance_extensions),
+            .p_application_info = &.{
+                .p_application_name = app_name,
+                .application_version = @bitCast(vk.makeApiVersion(0, 0, 0, 0)),
+                .p_engine_name = app_name,
+                .engine_version = @bitCast(vk.makeApiVersion(0, 0, 0, 0)),
+                .api_version = @bitCast(vk.API_VERSION_1_3),
+            },
+            .enabled_extension_count = @intCast(extension_names.items.len),
+            .pp_enabled_extension_names = extension_names.items.ptr,
+            // enumerate_portability_bit_khr to support vulkan in mac os
+            // see https://github.com/glfw/glfw/issues/2335
+            .flags = .{ .enumerate_portability_bit_khr = true },
         }, null);
 
-        const vki = try allocator.create(InstanceDispatch);
+        const vki = try allocator.create(InstanceWrapper);
         errdefer allocator.destroy(vki);
-        vki.* = try InstanceDispatch.load(instance, self.vkb.dispatch.vkGetInstanceProcAddr);
+        vki.* = InstanceWrapper.load(instance, self.vkb.dispatch.vkGetInstanceProcAddr.?);
         self.instance = Instance.init(instance, vki);
         errdefer self.instance.destroyInstance(null);
 
-        const callbackCreateInfo = vk.DebugUtilsMessengerCreateInfoEXT{
-            .flags = .{},
-            .message_severity = .{ .verbose_bit_ext = true, .info_bit_ext = true, .warning_bit_ext = true, .error_bit_ext = true },
-            .message_type = .{ .general_bit_ext = true, .validation_bit_ext = true, .performance_bit_ext = true },
-            .pfn_user_callback = @ptrCast(&debug_message_callback),
-            .p_user_data = null, // FIXME
-        };
-
-        self.debug_utils_messenger = try self.instance.createDebugUtilsMessengerEXT(&callbackCreateInfo, null);
-        errdefer self.instance.destroyDebugUtilsMessengerEXT(self.debug_utils_messenger, null);
+        self.debug_messenger = try self.instance.createDebugUtilsMessengerEXT(&.{
+            .message_severity = .{
+                //.verbose_bit_ext = true,
+                //.info_bit_ext = true,
+                .warning_bit_ext = true,
+                .error_bit_ext = true,
+            },
+            .message_type = .{
+                .general_bit_ext = true,
+                .validation_bit_ext = true,
+                .performance_bit_ext = true,
+            },
+            .pfn_user_callback = &debugUtilsMessengerCallback,
+            .p_user_data = null,
+        }, null);
 
         self.surface = try createSurface(self.instance, window);
         errdefer self.instance.destroySurfaceKHR(self.surface, null);
@@ -145,9 +115,9 @@ pub const GraphicsContext = struct {
 
         const dev = try initializeCandidate(self.instance, candidate);
 
-        const vkd = try allocator.create(DeviceDispatch);
+        const vkd = try allocator.create(DeviceWrapper);
         errdefer allocator.destroy(vkd);
-        vkd.* = try DeviceDispatch.load(dev, self.instance.wrapper.dispatch.vkGetDeviceProcAddr);
+        vkd.* = DeviceWrapper.load(dev, self.instance.wrapper.dispatch.vkGetDeviceProcAddr.?);
         self.dev = Device.init(dev, vkd);
         errdefer self.dev.destroyDevice(null);
 
@@ -197,10 +167,8 @@ pub const GraphicsContext = struct {
         self.dev.destroySemaphore(self.render_finished, null);
 
         self.dev.destroyDevice(null);
-
-        self.instance.destroyDebugUtilsMessengerEXT(self.debug_utils_messenger, null);
-
         self.instance.destroySurfaceKHR(self.surface, null);
+        self.instance.destroyDebugUtilsMessengerEXT(self.debug_messenger, null);
         self.instance.destroyInstance(null);
 
         // Don't forget to free the tables to prevent a memory leak.
@@ -272,8 +240,8 @@ fn initializeCandidate(instance: Instance, candidate: DeviceCandidate) !vk.Devic
         2;
 
     const features_vk_1_3 = vk.PhysicalDeviceVulkan13Features{
-        .synchronization_2 = vk.TRUE,
-        .dynamic_rendering = vk.TRUE,
+        .synchronization_2 = .true,
+        .dynamic_rendering = .true,
     };
 
     return try instance.createDevice(candidate.pdev, &.{
@@ -353,7 +321,7 @@ fn allocateQueues(instance: Instance, pdev: vk.PhysicalDevice, allocator: Alloca
             graphics_family = family;
         }
 
-        if (present_family == null and (try instance.getPhysicalDeviceSurfaceSupportKHR(pdev, family, surface)) == vk.TRUE) {
+        if (present_family == null and (try instance.getPhysicalDeviceSurfaceSupportKHR(pdev, family, surface)) == .true) {
             present_family = family;
         }
     }
@@ -399,34 +367,9 @@ fn checkExtensionSupport(
     return true;
 }
 
-fn print_debug_message(callback_data: *const vk.DebugUtilsMessengerCallbackDataEXT) void {
-    std.debug.print("vulkan: debug message [id: {s} ({x:8})] {s}\n", .{
-        if (callback_data.p_message_id_name) |id_name| id_name else "unknown",
-        callback_data.message_id_number,
-        if (callback_data.p_message) |message| message else "unknown",
-    });
+fn debugUtilsMessengerCallback(severity: vk.DebugUtilsMessageSeverityFlagsEXT, msg_type: vk.DebugUtilsMessageTypeFlagsEXT, callback_data_opt: ?*const vk.DebugUtilsMessengerCallbackDataEXT, _: ?*anyopaque) callconv(.c) vk.Bool32 {
+    _ = msg_type;
 
-    if (callback_data.p_cmd_buf_labels) |cmd_buf_labels| {
-        for (cmd_buf_labels[0..callback_data.cmd_buf_label_count]) |cmd_buf_label| {
-            std.debug.print("- command buffer label: '{s}'", .{cmd_buf_label.p_label_name});
-        }
-    }
-
-    // for (auto& command_buffer_label : std::span(callback_data->pCmdBufLabels, callback_data->cmdBufLabelCount))
-    // {
-    //     const char* label = command_buffer_label.pLabelName;
-    //     log_info(*root, "- command buffer label: '{}'", label ? label : "unnamed");
-    // }
-
-    // for (auto& object_name_info : std::span(callback_data->pObjects, callback_data->objectCount))
-    // {
-    //     const char* label = object_name_info.pObjectName;
-    //     log_info(*root, "- object '{}', type = {}, handle = {:#018x}", label ? label : "unnamed",
-    //              vk_to_string(object_name_info.objectType), object_name_info.objectHandle);
-    // }
-}
-
-fn debug_message_callback(severity: vk.DebugUtilsMessageSeverityFlagsEXT, _: vk.DebugUtilsMessageTypeFlagsEXT, callback_data: *const vk.DebugUtilsMessengerCallbackDataEXT, _: *anyopaque) callconv(.C) vk.Bool32 {
     const ID_LoaderMessage: i32 = 0x0000000;
     const ID_RDOC: i32 = 0x0000001;
     const ID_UNASSIGNED_BestPractices_vkCreateDevice_specialuse_extension_glemulation: i32 =
@@ -489,14 +432,17 @@ fn debug_message_callback(severity: vk.DebugUtilsMessageSeverityFlagsEXT, _: vk.
     };
 
     var ignore_message = false;
-    for (ignored_ids) |ignored_id| {
-        if (ignored_id == callback_data.message_id_number) {
-            ignore_message = true;
-        }
-    }
 
-    if (!ignore_message) {
-        print_debug_message(callback_data);
+    if (callback_data_opt) |callback_data| {
+        for (ignored_ids) |ignored_id| {
+            if (ignored_id == callback_data.message_id_number) {
+                ignore_message = true;
+            }
+        }
+
+        if (!ignore_message) {
+            print_debug_message(callback_data);
+        }
     }
 
     // const ignore_assert = ignore_message or severity < vk.WARNING_BIT_EXT;
@@ -509,5 +455,32 @@ fn debug_message_callback(severity: vk.DebugUtilsMessageSeverityFlagsEXT, _: vk.
         unreachable;
     }
 
-    return vk.FALSE;
+    return .false;
+}
+
+fn print_debug_message(callback_data: *const vk.DebugUtilsMessengerCallbackDataEXT) void {
+    std.debug.print("vulkan: debug message [id: {s} ({x:8})] {s}\n", .{
+        if (callback_data.p_message_id_name) |id_name| id_name else "unknown",
+        callback_data.message_id_number,
+        if (callback_data.p_message) |message| message else "unknown",
+    });
+
+    if (callback_data.p_cmd_buf_labels) |cmd_buf_labels| {
+        for (cmd_buf_labels[0..callback_data.cmd_buf_label_count]) |cmd_buf_label| {
+            std.debug.print("- command buffer label: '{s}'", .{cmd_buf_label.p_label_name});
+        }
+    }
+
+    // for (auto& command_buffer_label : std::span(callback_data->pCmdBufLabels, callback_data->cmdBufLabelCount))
+    // {
+    //     const char* label = command_buffer_label.pLabelName;
+    //     log_info(*root, "- command buffer label: '{}'", label ? label : "unnamed");
+    // }
+
+    // for (auto& object_name_info : std::span(callback_data->pObjects, callback_data->objectCount))
+    // {
+    //     const char* label = object_name_info.pObjectName;
+    //     log_info(*root, "- object '{}', type = {}, handle = {:#018x}", label ? label : "unnamed",
+    //              vk_to_string(object_name_info.objectType), object_name_info.objectHandle);
+    // }
 }

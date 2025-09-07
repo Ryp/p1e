@@ -31,20 +31,14 @@ pub fn build(b: *std.Build) void {
 
     if (enable_vulkan_backend) {
         const registry = b.dependency("vulkan_headers", .{});
-        const vulkan_zig = b.dependency("vulkan_zig", .{});
+        const vulkan = b.dependency("vulkan_zig", .{
+            .registry = registry.path("registry/vk.xml"),
+        }).module("vulkan-zig");
 
-        const vulkan_zig_generator = vulkan_zig.artifact("vulkan-zig-generator");
-        const vk_generate_cmd = b.addRunArtifact(vulkan_zig_generator);
-
-        const registry_path = registry.path("registry/vk.xml");
-        vk_generate_cmd.addFileArg(registry_path);
+        exe.root_module.addImport("vulkan", vulkan);
 
         exe.linkLibC();
         exe.linkSystemLibrary("glfw");
-
-        exe.root_module.addAnonymousImport("vulkan", .{
-            .root_source_file = vk_generate_cmd.addOutputFileArg("vk.zig"),
-        });
 
         compile_and_embed_hlsl_shader(b, exe.root_module, "./src/renderer/shaders/triangle.vert.hlsl", .Vertex, "triangle_vs") catch unreachable;
         compile_and_embed_hlsl_shader(b, exe.root_module, "./src/renderer/shaders/triangle.frag.hlsl", .Fragment, "triangle_fs") catch unreachable;
