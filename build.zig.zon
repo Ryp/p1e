@@ -40,6 +40,10 @@
             .url = "https://github.com/CubeFun/SCPH1001.bin/archive/dfd8d866d7218a7b889e1c4ab769b745ccd8a31e.zip",
             .hash = "N-V-__8AAAAACAA6EjMOzmN_4NRGVjzlhR2f3i2DUAq4V2uT",
         },
+        .tracy = .{
+            .url = "https://github.com/wolfpld/tracy/archive/67ba5b77277d565811aae1865a5966caef7e5b96.zip",
+            .hash = "N-V-__8AAIOSKwGsrhE7fP-vBA8TPZWqr4U3MBdzjZmVwjqc",
+        },
         .vulkan_zig = .{
             .url = "https://github.com/Snektron/vulkan-zig/archive/c9c4dae70356766f0954ae7d2b8aba4d1dd53a2a.zip",
             .hash = "vulkan-0.0.0-r7Ytx6hBAwBUnt0XA-uOkR2hda4fAHFhQITNTgJpnFkY",

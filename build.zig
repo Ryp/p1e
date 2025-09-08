@@ -47,15 +47,15 @@ pub fn build(b: *std.Build) void {
     }
 
     if (enable_tracy) {
-        const tracy_path = "external/tracy";
-        const client_cpp = "external/tracy/public/TracyClient.cpp";
+        const tracy = b.dependency("tracy", .{});
+        const client_cpp_path = tracy.path("public/TracyClient.cpp");
         const tracy_c_flags: []const []const u8 = &[_][]const u8{ "-DTRACY_ENABLE=1", "-fno-sanitize=undefined" };
 
-        exe.root_module.addIncludePath(b.path(tracy_path));
-        exe.root_module.addCSourceFile(.{ .file = b.path(client_cpp), .flags = tracy_c_flags });
+        exe.root_module.addIncludePath(tracy.path(""));
+        exe.root_module.addCSourceFile(.{ .file = client_cpp_path, .flags = tracy_c_flags });
 
-        exe.linkSystemLibrary("c++");
         exe.linkLibC();
+        exe.linkLibCpp();
     }
 
     if (no_bin) {
