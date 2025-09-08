@@ -1,6 +1,3 @@
-[submodule "external/bios"]
-	path = external/bios
-	url = https://github.com/CubeFun/SCPH1001.bin
 [submodule "external/tracy"]
 	path = external/tracy
 	url = https://github.com/wolfpld/tracy

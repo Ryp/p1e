@@ -13,7 +13,7 @@ pub fn build(b: *std.Build) void {
         }),
     });
 
-    const default_bios_path = b.path("external/bios/SCPH1001.bin");
+    const default_bios_path = b.dependency("bios", .{}).path("SCPH1001.bin");
     const bios_path = b.option(std.Build.LazyPath, "bios_path", "Path to SCPH1001.BIN") orelse default_bios_path;
 
     exe.root_module.addAnonymousImport("bios", .{ .root_source_file = bios_path });
