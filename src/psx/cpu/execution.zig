@@ -12,19 +12,23 @@ const exe_sideloading = @import("../exe_sideloading.zig");
 const instructions = @import("instructions.zig");
 const debug = @import("debug.zig");
 
+const SideloadedExePath: ?[:0]const u8 = null;
+
 pub fn step(psx: *PSXState) void {
     defer psx.step_index += 1;
 
-    if (psx.cpu.regs.pc == exe_sideloading.DefaultSideLoadingPC) {
-        var exe_file = if (std.fs.cwd().openFile("../psxtest_cpu.exe", .{})) |f| f else |err| {
-            std.debug.print("Failed to open exe file: {}\n", .{err});
-            return;
-        };
-        defer exe_file.close();
+    if (SideloadedExePath) |sideloaded_exe_path| {
+        if (psx.cpu.regs.pc == exe_sideloading.DefaultSideLoadingPC) {
+            var exe_file = if (std.fs.cwd().openFile(sideloaded_exe_path, .{})) |f| f else |err| {
+                std.debug.print("Failed to open exe file: {}\n", .{err});
+                return;
+            };
+            defer exe_file.close();
 
-        exe_sideloading.load(psx, exe_file.deprecatedReader()) catch |err| {
-            std.debug.print("Failed to load exe: {}\n", .{err});
-        };
+            exe_sideloading.load(psx, exe_file.deprecatedReader()) catch |err| {
+                std.debug.print("Failed to load exe: {}\n", .{err});
+            };
+        }
     }
 
     const address_typed: mmio.PSXAddress = @bitCast(psx.cpu.regs.pc);
