@@ -172,7 +172,7 @@ pub const DrawPolyOpCode = packed struct(u5) {
 // 7Dh = 0111 1101b GP0(7Dh) - Textured Rectangle, 16x16, opaque, raw-texture
 // 7Eh = 0111 1110b GP0(7Eh) - Textured Rectangle, 16x16, semi-transparent, texture-blending
 // 7Fh = 0111 1111b GP0(7Fh) - Textured Rectangle, 16x16, semi-transparent, raw-texture
-const DrawRectOpCode = packed struct(u5) {
+pub const DrawRectOpCode = packed struct(u5) {
     raw_texture: bool, // Used when is_textured is set. 0 = texture blending, 1 = raw texture
     is_semi_transparent: bool,
     is_textured: bool,

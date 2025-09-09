@@ -8,6 +8,7 @@ const Registers = cpu.Registers;
 
 const mmio = @import("../mmio.zig");
 const exe_sideloading = @import("../exe_sideloading.zig");
+const save_state = @import("../save_state.zig");
 
 const instructions = @import("instructions.zig");
 const debug = @import("debug.zig");
@@ -30,6 +31,23 @@ pub fn step(psx: *PSXState) void {
             };
         }
     }
+
+    // if (psx.step_index == 129870000) {
+    //     @branchHint(.cold);
+    //     var save_state_file = if (std.fs.cwd().createFile("cdrom.p1es", .{
+    //         .read = true,
+    //         .truncate = true,
+    //         .exclusive = false, // Set to true will ensure this file is created by us
+    //     })) |f| f else |err| {
+    //         std.debug.print("Failed to create save state file: {}\n", .{err});
+    //         return;
+    //     };
+    //     defer save_state_file.close();
+
+    //     save_state.save(psx.*, save_state_file.writer()) catch |err| {
+    //         std.debug.print("Failed to save state: {}\n", .{err});
+    //     };
+    // }
 
     const address_typed: mmio.PSXAddress = @bitCast(psx.cpu.regs.pc);
     const t1_value = load_reg(psx.cpu.regs, .t1);

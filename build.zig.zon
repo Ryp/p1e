@@ -52,6 +52,10 @@
             .url = "https://github.com/KhronosGroup/Vulkan-Headers/archive/d1cd37e925510a167d4abef39340dbdea47d8989.zip",
             .hash = "N-V-__8AAESg9gHKzlANbo03d4Fcb5m_5aZXJXIhYbWzCe4G",
         },
+        .sdl = .{
+            .url = "git+https://github.com/castholm/SDL.git#1994ca5dbad5a3e3c670a9ab8533d86cfd97bdc0",
+            .hash = "sdl-0.2.6+3.2.20-7uIn9NgjfwHH5a6HhyLHat2nHU3OP5B05QHhKJKuxEex",
+        },
     },
 
     // Specifies the set of files and directories that are included in this package.

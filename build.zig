@@ -69,6 +69,14 @@ pub fn build(b: *std.Build) void {
         // exe.linkLibCpp();
     }
 
+    const sdl_dep = b.dependency("sdl", .{
+        .target = target,
+        .optimize = optimize,
+    });
+    const sdl_lib = sdl_dep.artifact("SDL3");
+
+    exe.root_module.linkLibrary(sdl_lib);
+
     if (no_bin) {
         b.getInstallStep().dependOn(&exe.step);
     } else {

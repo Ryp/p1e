@@ -11,6 +11,7 @@ const g0 = @import("instructions_g0.zig");
 const g1 = @import("instructions_g1.zig");
 
 const config = @import("../config.zig");
+const cpu_execution = @import("../cpu/execution.zig");
 
 // FIXME be very careful with endianness here
 pub fn store_gp0_u32(psx: *PSXState, value: u32) void {
@@ -371,6 +372,9 @@ fn execute_gp0_command(psx: *PSXState, op_code: g0.OpCode, command_bytes: []u8) 
                     if (!psx.headless) {
                         psx.gpu.pending_draw = true;
                     }
+
+                    // FIXME Horrible hack
+                    cpu_execution.request_hardware_interrupt(psx, .IRQ0_VBlank);
                 },
                 .SetMaskBitSetting => {
                     const mask_bit_setting = std.mem.bytesAsValue(g0.SetMaskBitSetting, command_bytes);
@@ -506,6 +510,13 @@ fn packed_vertex_to_f32_3(packed_vertex: g0.PackedVertexPos) f32_3 {
         @floatFromInt(packed_vertex.x),
         @floatFromInt(packed_vertex.y),
         0.0,
+    };
+}
+
+fn packed_vertex_to_f32_2(packed_vertex: g0.PackedVertexPos) f32_2 {
+    return .{
+        @floatFromInt(packed_vertex.x),
+        @floatFromInt(packed_vertex.y),
     };
 }
 
@@ -674,6 +685,15 @@ fn convert_rgb8_to_rgb5a1(color: g0.PackedRGB8, alpha: u1) PackedRGB5A1 {
     };
 }
 
+fn convert_rgb_f32_to_rgb5a1(color: f32_3, alpha: u1) PackedRGB5A1 {
+    return .{
+        .r = @intFromFloat(color[0] * 31.0),
+        .g = @intFromFloat(color[1] * 31.0),
+        .b = @intFromFloat(color[2] * 31.0),
+        .a = alpha,
+    };
+}
+
 pub fn convert_rgb5a1_to_rgba8(color: PackedRGB5A1) PackedRGBA8 {
     return .{
         .r = @intFromFloat(@as(f32, @floatFromInt(color.r)) / 31.0 * 255.0),
@@ -684,8 +704,16 @@ pub fn convert_rgb5a1_to_rgba8(color: PackedRGB5A1) PackedRGBA8 {
 }
 
 fn draw_triangle_shaded(psx: *PSXState, op_code: g0.DrawPolyOpCode, triangle_shaded: g0.DrawTriangleShaded) void {
-    // PORT!
-    // unreachable;
+    rasterize_triangle(psx, .{
+        .position = triangle_shaded.v1_pos,
+        .color = triangle_shaded.v1_color,
+    }, .{
+        .position = triangle_shaded.v2_pos,
+        .color = triangle_shaded.v2_color,
+    }, .{
+        .position = triangle_shaded.v3_pos,
+        .color = triangle_shaded.v3_color,
+    });
 
     push_packed_triangle_color(psx, .{ .secondary = .{ .draw_poly = op_code }, .primary = .DrawPoly }, .{
         .position = triangle_shaded.v1_pos,
@@ -700,8 +728,27 @@ fn draw_triangle_shaded(psx: *PSXState, op_code: g0.DrawPolyOpCode, triangle_sha
 }
 
 fn draw_quad_shaded(psx: *PSXState, op_code: g0.DrawPolyOpCode, quad_shaded: g0.DrawQuadShaded) void {
-    // PORT!
-    // unreachable;
+    rasterize_triangle(psx, .{
+        .position = quad_shaded.v1_pos,
+        .color = quad_shaded.v1_color,
+    }, .{
+        .position = quad_shaded.v2_pos,
+        .color = quad_shaded.v2_color,
+    }, .{
+        .position = quad_shaded.v3_pos,
+        .color = quad_shaded.v3_color,
+    });
+
+    rasterize_triangle(psx, .{
+        .position = quad_shaded.v2_pos,
+        .color = quad_shaded.v2_color,
+    }, .{
+        .position = quad_shaded.v3_pos,
+        .color = quad_shaded.v3_color,
+    }, .{
+        .position = quad_shaded.v4_pos,
+        .color = quad_shaded.v4_color,
+    });
 
     push_packed_quad_color(psx, .{ .secondary = .{ .draw_poly = op_code }, .primary = .DrawPoly }, .{
         .position = quad_shaded.v1_pos,
@@ -716,4 +763,86 @@ fn draw_quad_shaded(psx: *PSXState, op_code: g0.DrawPolyOpCode, quad_shaded: g0.
         .position = quad_shaded.v4_pos,
         .color = quad_shaded.v4_color,
     });
+}
+
+const AABB_f32_2 = struct {
+    min: f32_2,
+    max: f32_2,
+};
+
+pub const u32_2 = @Vector(2, u32);
+
+const AABB_u32_2 = struct {
+    min: u32_2,
+    max: u32_2,
+};
+
+fn rasterize_triangle(psx: *PSXState, v1: PhatPackedVertex, v2: PhatPackedVertex, v3: PhatPackedVertex) void {
+    const v1_pos = packed_vertex_to_f32_2(v1.position);
+    var v2_pos = packed_vertex_to_f32_2(v2.position);
+    var v3_pos = packed_vertex_to_f32_2(v3.position);
+
+    const v1_color = packed_color_to_f32_3(v1.color);
+    var v2_color = packed_color_to_f32_3(v2.color);
+    var v3_color = packed_color_to_f32_3(v3.color);
+
+    // FIXME
+    var det_v123 = det2(v2_pos - v1_pos, v3_pos - v1_pos);
+
+    if (det_v123 < 0.0) {
+        std.mem.swap(f32_2, &v2_pos, &v3_pos);
+        std.mem.swap(f32_3, &v2_color, &v3_color);
+        det_v123 = -det_v123;
+    }
+
+    const v_min_x = @min(v1_pos[0], @min(v2_pos[0], v3_pos[0]));
+    const v_min_y = @min(v1_pos[1], @min(v2_pos[1], v3_pos[1]));
+
+    const v_max_x = @max(v1_pos[0], @max(v2_pos[0], v3_pos[0]));
+    const v_max_y = @max(v1_pos[1], @max(v2_pos[1], v3_pos[1]));
+
+    const triangle_aabb_f32 = AABB_f32_2{
+        .min = .{ v_min_x, v_min_y },
+        .max = .{ v_max_x, v_max_y },
+    };
+
+    const triangle_aabb_u32 = AABB_u32_2{
+        .min = .{
+            @intFromFloat(triangle_aabb_f32.min[0]),
+            @intFromFloat(triangle_aabb_f32.min[1]),
+        },
+        .max = .{
+            @intFromFloat(triangle_aabb_f32.max[0]),
+            @intFromFloat(triangle_aabb_f32.max[1]),
+        },
+    };
+
+    const vram_typed = std.mem.bytesAsSlice(PackedRGB5A1, psx.gpu.vram);
+
+    for (triangle_aabb_u32.min[1]..triangle_aabb_u32.max[1]) |y| {
+        for (triangle_aabb_u32.min[0]..triangle_aabb_u32.max[0]) |x| {
+            const pos: f32_2 = .{
+                @floatFromInt(x),
+                @floatFromInt(y),
+            };
+
+            const det_v12 = det2(v2_pos - v1_pos, pos - v1_pos);
+            const det_v23 = det2(v3_pos - v2_pos, pos - v2_pos);
+            const det_v31 = det2(v1_pos - v3_pos, pos - v3_pos);
+
+            const l1 = det_v23 / det_v123;
+            const l2 = det_v31 / det_v123;
+            const l3 = det_v12 / det_v123;
+
+            const color = v1_color * @as(f32_3, @splat(l1)) + v2_color * @as(f32_3, @splat(l2)) + v3_color * @as(f32_3, @splat(l3));
+
+            if (det_v12 >= 0.0 and det_v23 >= 0.0 and det_v31 >= 0.0) {
+                vram_typed[y * stride_y + x] = convert_rgb_f32_to_rgb5a1(color, 0);
+            }
+        }
+    }
+}
+
+fn det2(p1: f32_2, p2: f32_2) f32 {
+    return (p1[0] * p2[1]) - (p1[1] * p2[0]);
 }
