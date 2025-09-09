@@ -19,14 +19,23 @@ pub fn build(b: *std.Build) void {
     exe.root_module.addAnonymousImport("bios", .{ .root_source_file = bios_path });
 
     const enable_vulkan_backend = b.option(bool, "vulkan", "Enable Vulkan renderer support") orelse false;
+
     const enable_tracy = b.option(bool, "tracy", "Enable Tracy support") orelse false;
-    const tracy_callstack = b.option(bool, "tracy-callstack", "Include callstack information with Tracy data. Does nothing if -Dtracy is not provided") orelse false;
+    const tracy_callstack = b.option(bool, "tracy-callstack", "Include callstack information with Tracy data. Does nothing if -Dtracy is not provided") orelse enable_tracy;
+    const tracy_allocation = b.option(bool, "tracy-allocation", "Include allocation information with Tracy data. Does nothing if -Dtracy is not provided") orelse enable_tracy;
+    const tracy_callstack_depth: u32 = b.option(u32, "tracy-callstack-depth", "Declare callstack depth for Tracy data. Does nothing if -Dtracy_callstack is not provided") orelse 10;
+
     const no_bin = b.option(bool, "no-bin", "skip emitting binary") orelse false;
 
     const exe_options = b.addOptions();
+
     exe_options.addOption(bool, "enable_vulkan_backend", enable_vulkan_backend);
+
     exe_options.addOption(bool, "enable_tracy", enable_tracy);
     exe_options.addOption(bool, "enable_tracy_callstack", tracy_callstack);
+    exe_options.addOption(bool, "enable_tracy_allocation", tracy_allocation);
+    exe_options.addOption(u32, "tracy_callstack_depth", tracy_callstack_depth);
+
     exe.root_module.addOptions("build_options", exe_options);
 
     if (enable_vulkan_backend) {
@@ -48,14 +57,16 @@ pub fn build(b: *std.Build) void {
 
     if (enable_tracy) {
         const tracy = b.dependency("tracy", .{});
+        const tracy_path = tracy.path("tracy");
         const client_cpp_path = tracy.path("public/TracyClient.cpp");
         const tracy_c_flags: []const []const u8 = &[_][]const u8{ "-DTRACY_ENABLE=1", "-fno-sanitize=undefined" };
 
-        exe.root_module.addIncludePath(tracy.path(""));
+        exe.root_module.addIncludePath(tracy_path);
         exe.root_module.addCSourceFile(.{ .file = client_cpp_path, .flags = tracy_c_flags });
 
+        exe.linkSystemLibrary("c++");
         exe.linkLibC();
-        exe.linkLibCpp();
+        // exe.linkLibCpp();
     }
 
     if (no_bin) {
@@ -72,6 +83,17 @@ pub fn build(b: *std.Build) void {
 
     const run_step = b.step("run", "Run the program");
     run_step.dependOn(&run_cmd.step);
+
+    // if (enable_tracy) {
+    //     const tracy = b.dependency("tracy", .{});
+    //     const tracy_profiler_path = tracy.path("profiler");
+
+    //     const cmake_config = b.addSystemCommand(&.{ "cmake", "-G", "Ninja", "-S", tracy_profiler_path.getPath2(b, null), "-B", "build" });
+    //     const cmake_build = b.addSystemCommand(&.{ "cmake", "--build", "build" });
+
+    //     cmake_build.step.dependOn(&cmake_config.step);
+    //     run_cmd.step.dependOn(&cmake_build.step);
+    // }
 
     // Test
     const test_a = b.addTest(.{

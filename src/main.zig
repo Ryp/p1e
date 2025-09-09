@@ -5,16 +5,33 @@ const Md5 = std.crypto.hash.Md5;
 const psx_state = @import("psx/state.zig");
 const loop = @import("renderer/loop.zig");
 
+const tracy = @import("tracy.zig");
+const builtin = @import("builtin");
+
+var debug_allocator: std.heap.DebugAllocator(.{}) = .init;
+var gpa_allocator = std.heap.GeneralPurposeAllocator(.{}){};
+
 pub fn main() !void {
-    var gpa = std.heap.GeneralPurposeAllocator(.{}){};
-    defer _ = gpa.deinit();
+    const gpa, const is_debug = switch (builtin.mode) {
+        .Debug, .ReleaseSafe => .{ debug_allocator.allocator(), true },
+        .ReleaseFast, .ReleaseSmall => .{ gpa_allocator.allocator(), false },
+    };
 
-    const allocator = gpa.allocator();
-    // const allocator = std.heap.page_allocator;
+    defer if (is_debug) {
+        _ = debug_allocator.deinit();
+    };
 
-    // Parse arguments
-    const args = try std.process.argsAlloc(allocator);
-    defer std.process.argsFree(allocator, args);
+    if (tracy.enable_allocation) {
+        var gpa_tracy = tracy.tracyAllocator(gpa);
+        return main_with_allocator(gpa_tracy.allocator());
+    }
+
+    return main_with_allocator(gpa);
+}
+
+pub fn main_with_allocator(allocator: std.mem.Allocator) !void {
+    const tr = tracy.trace(@src());
+    defer tr.end();
 
     const embedded_bios = @embedFile("bios").*;
 
