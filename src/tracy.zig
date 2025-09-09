@@ -3,10 +3,9 @@ const builtin = @import("builtin");
 const build_options = @import("build_options");
 
 pub const enable = if (builtin.is_test) false else build_options.enable_tracy;
+pub const enable_allocation = enable and build_options.enable_tracy_allocation;
 pub const enable_callstack = enable and build_options.enable_tracy_callstack;
-
-// TODO: make this configurable
-const callstack_depth = 10;
+pub const callstack_depth = if (enable_callstack and build_options.tracy_callstack_depth > 0) build_options.tracy_callstack_depth else 10;
 
 const ___tracy_c_zone_context = extern struct {
     id: u32,
@@ -62,44 +61,40 @@ pub const Ctx = if (enable) ___tracy_c_zone_context else struct {
 pub inline fn trace(comptime src: std.builtin.SourceLocation) Ctx {
     if (!enable) return .{};
 
+    const global = struct {
+        const loc: ___tracy_source_location_data = .{
+            .name = null,
+            .function = src.fn_name.ptr,
+            .file = src.file.ptr,
+            .line = src.line,
+            .color = 0,
+        };
+    };
+
     if (enable_callstack) {
-        return ___tracy_emit_zone_begin_callstack(&.{
-            .name = null,
-            .function = src.fn_name.ptr,
-            .file = src.file.ptr,
-            .line = src.line,
-            .color = 0,
-        }, callstack_depth, 1);
+        return ___tracy_emit_zone_begin_callstack(&global.loc, callstack_depth, 1);
     } else {
-        return ___tracy_emit_zone_begin(&.{
-            .name = null,
-            .function = src.fn_name.ptr,
-            .file = src.file.ptr,
-            .line = src.line,
-            .color = 0,
-        }, 1);
+        return ___tracy_emit_zone_begin(&global.loc, 1);
     }
 }
 
 pub inline fn traceNamed(comptime src: std.builtin.SourceLocation, comptime name: [:0]const u8) Ctx {
     if (!enable) return .{};
 
+    const global = struct {
+        const loc: ___tracy_source_location_data = .{
+            .name = name.ptr,
+            .function = src.fn_name.ptr,
+            .file = src.file.ptr,
+            .line = src.line,
+            .color = 0,
+        };
+    };
+
     if (enable_callstack) {
-        return ___tracy_emit_zone_begin_callstack(&.{
-            .name = name.ptr,
-            .function = src.fn_name.ptr,
-            .file = src.file.ptr,
-            .line = src.line,
-            .color = 0,
-        }, callstack_depth, 1);
+        return ___tracy_emit_zone_begin_callstack(&global.loc, callstack_depth, 1);
     } else {
-        return ___tracy_emit_zone_begin(&.{
-            .name = name.ptr,
-            .function = src.fn_name.ptr,
-            .file = src.file.ptr,
-            .line = src.line,
-            .color = 0,
-        }, 1);
+        return ___tracy_emit_zone_begin(&global.loc, 1);
     }
 }
 
@@ -120,65 +115,93 @@ pub fn TracyAllocator(comptime name: ?[:0]const u8) type {
         }
 
         pub fn allocator(self: *Self) std.mem.Allocator {
-            return std.mem.Allocator.init(self, allocFn, resizeFn, freeFn);
+            return .{
+                .ptr = self,
+                .vtable = &.{
+                    .alloc = allocFn,
+                    .resize = resizeFn,
+                    .remap = remapFn,
+                    .free = freeFn,
+                },
+            };
         }
 
-        fn allocFn(self: *Self, len: usize, ptr_align: u29, len_align: u29, ret_addr: usize) std.mem.Allocator.Error![]u8 {
-            const result = self.parent_allocator.rawAlloc(len, ptr_align, len_align, ret_addr);
-            if (result) |data| {
-                if (data.len != 0) {
+        fn allocFn(ptr: *anyopaque, len: usize, alignment: std.mem.Alignment, ret_addr: usize) ?[*]u8 {
+            const self: *Self = @ptrCast(@alignCast(ptr));
+            const result = self.parent_allocator.rawAlloc(len, alignment, ret_addr);
+            if (result) |memory| {
+                if (len != 0) {
                     if (name) |n| {
-                        allocNamed(data.ptr, data.len, n);
+                        allocNamed(memory, len, n);
                     } else {
-                        alloc(data.ptr, data.len);
+                        alloc(memory, len);
                     }
                 }
-            } else |_| {
+            } else {
                 messageColor("allocation failed", 0xFF0000);
             }
             return result;
         }
 
-        fn resizeFn(self: *Self, buf: []u8, buf_align: u29, new_len: usize, len_align: u29, ret_addr: usize) ?usize {
-            if (self.parent_allocator.rawResize(buf, buf_align, new_len, len_align, ret_addr)) |resized_len| {
+        fn resizeFn(ptr: *anyopaque, memory: []u8, alignment: std.mem.Alignment, new_len: usize, ret_addr: usize) bool {
+            const self: *Self = @ptrCast(@alignCast(ptr));
+            if (self.parent_allocator.rawResize(memory, alignment, new_len, ret_addr)) {
                 if (name) |n| {
-                    freeNamed(buf.ptr, n);
-                    allocNamed(buf.ptr, resized_len, n);
+                    freeNamed(memory.ptr, n);
+                    allocNamed(memory.ptr, new_len, n);
                 } else {
-                    free(buf.ptr);
-                    alloc(buf.ptr, resized_len);
+                    free(memory.ptr);
+                    alloc(memory.ptr, new_len);
                 }
 
-                return resized_len;
+                return true;
             }
 
             // during normal operation the compiler hits this case thousands of times due to this
             // emitting messages for it is both slow and causes clutter
-            return null;
+            return false;
         }
 
-        fn freeFn(self: *Self, buf: []u8, buf_align: u29, ret_addr: usize) void {
-            self.parent_allocator.rawFree(buf, buf_align, ret_addr);
+        fn remapFn(ptr: *anyopaque, memory: []u8, alignment: std.mem.Alignment, new_len: usize, ret_addr: usize) ?[*]u8 {
+            const self: *Self = @ptrCast(@alignCast(ptr));
+            if (self.parent_allocator.rawRemap(memory, alignment, new_len, ret_addr)) |new_memory| {
+                if (name) |n| {
+                    freeNamed(memory.ptr, n);
+                    allocNamed(new_memory, new_len, n);
+                } else {
+                    free(memory.ptr);
+                    alloc(new_memory, new_len);
+                }
+                return new_memory;
+            } else {
+                messageColor("reallocation failed", 0xFF0000);
+                return null;
+            }
+        }
+
+        fn freeFn(ptr: *anyopaque, memory: []u8, alignment: std.mem.Alignment, ret_addr: usize) void {
+            const self: *Self = @ptrCast(@alignCast(ptr));
+            self.parent_allocator.rawFree(memory, alignment, ret_addr);
             // this condition is to handle free being called on an empty slice that was never even allocated
             // example case: `std.process.getSelfExeSharedLibPaths` can return `&[_][:0]u8{}`
-            if (buf.len != 0) {
+            if (memory.len != 0) {
                 if (name) |n| {
-                    freeNamed(buf.ptr, n);
+                    freeNamed(memory.ptr, n);
                 } else {
-                    free(buf.ptr);
+                    free(memory.ptr);
                 }
             }
         }
     };
 }
 
-// This function only accepts comptime known strings, see `messageCopy` for runtime strings
+// This function only accepts comptime-known strings, see `messageCopy` for runtime strings
 pub inline fn message(comptime msg: [:0]const u8) void {
     if (!enable) return;
     ___tracy_emit_messageL(msg.ptr, if (enable_callstack) callstack_depth else 0);
 }
 
-// This function only accepts comptime known strings, see `messageColorCopy` for runtime strings
+// This function only accepts comptime-known strings, see `messageColorCopy` for runtime strings
 pub inline fn messageColor(comptime msg: [:0]const u8, color: u32) void {
     if (!enable) return;
     ___tracy_emit_messageLC(msg.ptr, color, if (enable_callstack) callstack_depth else 0);
