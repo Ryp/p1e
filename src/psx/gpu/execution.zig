@@ -27,7 +27,9 @@ pub fn load_gpuread_u32(psx: *PSXState) u32 {
 
     switch (psx.gpu.gpuread_mode) {
         .idle => {
-            std.debug.print("GPUREAD in idle mode!\n", .{});
+            if (config.enable_gpu_debug) {
+                std.debug.print("GPUREAD in idle mode!\n", .{});
+            }
             return 0; // FIXME We might have to return the last value instead
         },
         .gpu_type => {

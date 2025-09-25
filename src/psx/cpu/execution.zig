@@ -7,6 +7,7 @@ const cpu = @import("state.zig");
 const Registers = cpu.Registers;
 
 const mmio = @import("../mmio.zig");
+const gte = @import("../gte/execution.zig");
 const exe_sideloading = @import("../exe_sideloading.zig");
 const save_state = @import("../save_state.zig");
 
@@ -54,17 +55,19 @@ pub fn step(psx: *PSXState) void {
     const address_typed: mmio.PSXAddress = @bitCast(psx.cpu.regs.pc);
     const t1_value = load_reg(psx.cpu.regs, .t1);
 
-    if ((address_typed.offset == 0xA0 and t1_value == 0x3C) or (address_typed.offset == 0xB0 and t1_value == 0x3D)) {
-        const char: u8 = @truncate(load_reg(psx.cpu.regs, .a0));
+    if (config.enable_tty_print) {
+        if ((address_typed.offset == 0xA0 and t1_value == 0x3C) or (address_typed.offset == 0xB0 and t1_value == 0x3D)) {
+            const char: u8 = @truncate(load_reg(psx.cpu.regs, .a0));
 
-        var stdout_buffer: [1024]u8 = undefined;
-        var stdout_writer = std.fs.File.stdout().writer(&stdout_buffer);
-        const stdout = &stdout_writer.interface;
+            var stdout_buffer: [1024]u8 = undefined;
+            var stdout_writer = std.fs.File.stdout().writer(&stdout_buffer);
+            const stdout = &stdout_writer.interface;
 
-        stdout.print("{c}", .{char}) catch |err| {
-            std.debug.print("Error writing to stdout: {}\n", .{err});
-        };
-        stdout.flush() catch unreachable;
+            stdout.print("{c}", .{char}) catch |err| {
+                std.debug.print("Error writing to stdout: {}\n", .{err});
+            };
+            stdout.flush() catch unreachable;
+        }
     }
 
     psx.cpu.regs.current_instruction_pc = psx.cpu.regs.pc;
@@ -564,8 +567,7 @@ fn execute_ctc(psx: *PSXState, instruction: instructions.ctc) void {
     switch (instruction.target) {
         .cop0 => unreachable, // FIXME
         .cop2 => |register_index| {
-            std.debug.print("ctc2 mv {x} to ctrl register {}\n", .{ value, register_index });
-            psx.gte.ctrl_regs[register_index] = value;
+            gte.execute_ctc(psx, register_index, value);
         }, // FIXME
         .cop1 => @panic("ctc1 is not valid"),
         .cop3 => @panic("ctc3 is not valid"),

@@ -1,6 +1,7 @@
 const std = @import("std");
 
 const PSXState = @import("../state.zig").PSXState;
+const config = @import("../config.zig");
 const mmio = @import("../mmio.zig");
 const mmio_gpu = @import("../gpu/mmio.zig");
 
@@ -9,7 +10,9 @@ const execution = @import("execution.zig");
 pub fn load_mmio_u8(psx: *PSXState, offset: u29) u8 {
     std.debug.assert(offset >= MMIO.Offset and offset < MMIO.OffsetEnd);
 
-    std.debug.print("CDROM MMIO Load: offset={x} bank={}\n", .{ offset, psx.mmio.cdrom.index_status.index });
+    if (config.enable_cdrom_debug) {
+        std.debug.print("CDROM MMIO Load: offset={x} bank={}\n", .{ offset, psx.mmio.cdrom.index_status.index });
+    }
 
     switch (offset) {
         MMIO.IndexStatus_Offset => {
@@ -23,7 +26,10 @@ pub fn load_mmio_u8(psx: *PSXState, offset: u29) u8 {
                 .BUSYSTS = false, // FIXME
             };
 
-            std.debug.print("Index/Status Load: {}\n", .{psx.mmio.cdrom.index_status});
+            if (config.enable_cdrom_debug) {
+                std.debug.print("Index/Status Load: {}\n", .{psx.mmio.cdrom.index_status});
+            }
+
             return @bitCast(psx.mmio.cdrom.index_status);
         },
         MMIO.CommandPort1_Offset...MMIO.CommandPort3_Offset => {
@@ -41,7 +47,9 @@ pub fn load_mmio_u8(psx: *PSXState, offset: u29) u8 {
                         MMIO.CommandPort1_Offset => {
                             // FIXME
                             const response = psx.cdrom.response_fifo.pop() catch unreachable;
-                            std.debug.print("Read response FIFO (got {x})\n", .{response});
+                            if (config.enable_cdrom_debug) {
+                                std.debug.print("Read response FIFO (got {x})\n", .{response});
+                            }
                             return response;
                         },
                         MMIO.CommandPort2_Offset => unreachable, // FIXME
@@ -84,13 +92,17 @@ pub fn load_mmio_u16(psx: *PSXState, offset: u29) u16 {
 pub fn store_mmio_u8(psx: *PSXState, offset: u29, value: u8) void {
     std.debug.assert(offset >= MMIO.Offset and offset < MMIO.OffsetEnd);
 
-    std.debug.print("CDROM MMIO Store: offset={x} bank={} value={x}\n", .{ offset, psx.mmio.cdrom.index_status.index, value });
+    if (config.enable_cdrom_debug) {
+        std.debug.print("CDROM MMIO Store: offset={x} bank={} value={x}\n", .{ offset, psx.mmio.cdrom.index_status.index, value });
+    }
 
     switch (offset) {
         MMIO.IndexStatus_Offset => {
             psx.mmio.cdrom.index_status.index = @truncate(value);
 
-            std.debug.print("Set bank index: {}\n", .{psx.mmio.cdrom.index_status.index});
+            if (config.enable_cdrom_debug) {
+                std.debug.print("Set bank index: {}\n", .{psx.mmio.cdrom.index_status.index});
+            }
         },
         MMIO.CommandPort1_Offset...MMIO.CommandPort3_Offset => {
             switch (psx.mmio.cdrom.index_status.index) {
@@ -104,7 +116,10 @@ pub fn store_mmio_u8(psx: *PSXState, offset: u29, value: u8) void {
                         },
                         MMIO.CommandPort2_Offset => {
                             const parameter: @TypeOf(bank.parameter_fifo) = @bitCast(value);
-                            std.debug.print("CDROM wrote parameter: {}\n", .{parameter});
+
+                            if (config.enable_cdrom_debug) {
+                                std.debug.print("CDROM wrote parameter: {}\n", .{parameter});
+                            }
 
                             psx.cdrom.parameter_fifo.push(parameter) catch unreachable;
                         },
@@ -124,7 +139,10 @@ pub fn store_mmio_u8(psx: *PSXState, offset: u29, value: u8) void {
                         MMIO.CommandPort1_Offset => unreachable, // FIXME
                         MMIO.CommandPort2_Offset => {
                             const interrupt_enable_write: @TypeOf(bank.interrupt_enable) = @bitCast(value);
-                            std.debug.print("Interrupt enable value: {}\n", .{interrupt_enable_write});
+
+                            if (config.enable_cdrom_debug) {
+                                std.debug.print("Interrupt enable value: {}\n", .{interrupt_enable_write});
+                            }
                             std.debug.assert(interrupt_enable_write.zero == 0);
 
                             psx.cdrom.irq_enabled_mask = interrupt_enable_write.bits;
@@ -138,7 +156,10 @@ pub fn store_mmio_u8(psx: *PSXState, offset: u29, value: u8) void {
 
                             if (interrupt_flag_write.b6_CLRPRM) {
                                 psx.cdrom.parameter_fifo.discard();
-                                std.debug.print("RESET PARAM FIFO\n", .{});
+
+                                if (config.enable_cdrom_debug) {
+                                    std.debug.print("RESET PARAM FIFO\n", .{});
+                                }
                             }
 
                             psx.cdrom.irq_requested_mask &= ~interrupt_flag_write.b0_4_ack;

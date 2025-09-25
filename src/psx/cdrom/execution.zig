@@ -2,16 +2,21 @@ const std = @import("std");
 
 const PSXState = @import("../state.zig").PSXState;
 
+const config = @import("../config.zig");
 const cpu_execution = @import("../cpu/execution.zig");
 
 pub fn execute_command(psx: *PSXState, command_byte: u8) void {
     const command: Command = @enumFromInt(command_byte);
 
-    std.debug.print("CDROM Execute command: {x}\n", .{command_byte});
+    if (config.enable_cdrom_debug) {
+        std.debug.print("CDROM Execute command: {x}\n", .{command_byte});
+    }
 
     switch (command) {
         .Getstat => {
-            std.debug.print("CDROM GetStat: {}\n", .{psx.cdrom.stat});
+            if (config.enable_cdrom_debug) {
+                std.debug.print("CDROM GetStat: {}\n", .{psx.cdrom.stat});
+            }
 
             psx.cdrom.response_fifo.push(@bitCast(psx.cdrom.stat)) catch unreachable;
 
@@ -20,11 +25,15 @@ pub fn execute_command(psx: *PSXState, command_byte: u8) void {
         .Test => {
             const sub_command: TestSubCommand = @enumFromInt(psx.cdrom.parameter_fifo.pop() catch unreachable);
 
-            std.debug.print("CDROM Test command: {}\n", .{sub_command});
+            if (config.enable_cdrom_debug) {
+                std.debug.print("CDROM Test command: {}\n", .{sub_command});
+            }
 
             switch (sub_command) {
                 .GetDateBCD => {
-                    std.debug.print("GET DATE BCD\n", .{});
+                    if (config.enable_cdrom_debug) {
+                        std.debug.print("GET DATE BCD\n", .{});
+                    }
 
                     const bios_version = HC05ControllerBiosVersionBCD_PU22;
                     psx.cdrom.response_fifo.push(bios_version.year) catch unreachable;
@@ -47,7 +56,9 @@ fn request_cdrom_interrupt(psx: *PSXState, irq_mask: u5) void {
     if (psx.cdrom.irq_requested_mask & psx.cdrom.irq_enabled_mask != 0) {
         cpu_execution.request_hardware_interrupt(psx, .IRQ2_CDRom);
 
-        std.debug.print("INTERRUPT!\n", .{});
+        if (config.enable_cdrom_debug) {
+            std.debug.print("CDROM Interrupt!\n", .{});
+        }
     }
 }
 
