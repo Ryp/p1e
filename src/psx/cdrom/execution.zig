@@ -20,7 +20,7 @@ pub fn execute_command(psx: *PSXState, command_byte: u8) void {
 
             psx.cdrom.response_fifo.push(@bitCast(psx.cdrom.stat)) catch unreachable;
 
-            request_cdrom_interrupt(psx, 3);
+            request_cdrom_interrupt(psx, .ACK);
         },
         .Test => {
             const sub_command: TestSubCommand = @enumFromInt(psx.cdrom.parameter_fifo.pop() catch unreachable);
@@ -35,13 +35,13 @@ pub fn execute_command(psx: *PSXState, command_byte: u8) void {
                         std.debug.print("GET DATE BCD\n", .{});
                     }
 
-                    const bios_version = HC05ControllerBiosVersionBCD_PU22;
+                    const bios_version = HC05ControllerBiosVersionBCD_PU7;
                     psx.cdrom.response_fifo.push(bios_version.year) catch unreachable;
                     psx.cdrom.response_fifo.push(bios_version.month) catch unreachable;
                     psx.cdrom.response_fifo.push(bios_version.day) catch unreachable;
                     psx.cdrom.response_fifo.push(bios_version.version) catch unreachable;
 
-                    request_cdrom_interrupt(psx, 3);
+                    request_cdrom_interrupt(psx, .ACK);
                 },
                 else => @panic("Unknown CDROM Test command"),
             }
@@ -50,8 +50,8 @@ pub fn execute_command(psx: *PSXState, command_byte: u8) void {
     }
 }
 
-fn request_cdrom_interrupt(psx: *PSXState, irq_mask: u5) void {
-    psx.cdrom.irq_requested_mask = irq_mask; // Weird behavior of int in a mask encoding...
+fn request_cdrom_interrupt(psx: *PSXState, irq_mask: IRQMask) void {
+    psx.cdrom.irq_requested_mask = @intFromEnum(irq_mask); // Weird behavior of int in a mask encoding...
 
     if (psx.cdrom.irq_requested_mask & psx.cdrom.irq_enabled_mask != 0) {
         cpu_execution.request_hardware_interrupt(psx, .IRQ2_CDRom);
@@ -61,6 +61,14 @@ fn request_cdrom_interrupt(psx: *PSXState, irq_mask: u5) void {
         }
     }
 }
+
+const IRQMask = enum(u5) {
+    DataReady = 1,
+    Complete = 2,
+    ACK = 3,
+    DataEnd = 4,
+    Error = 5,
+};
 
 //  (unknown)        ;DTL-H2000 (with SPC700 instead HC05)
 //  94h,09h,19h,C0h  ;PSX (PU-7)               19 Sep 1994, version vC0 (a)
@@ -85,11 +93,11 @@ const HC05ControllerBiosVersionBCD = packed struct {
     version: u8, // BCD
 };
 
-const HC05ControllerBiosVersionBCD_PU22 = HC05ControllerBiosVersionBCD{
-    .year = 0x98, // 1998
-    .month = 0x06, // June
-    .day = 0x10, // 10th
-    .version = 0xC3, // Version C3
+const HC05ControllerBiosVersionBCD_PU7 = HC05ControllerBiosVersionBCD{
+    .year = 0x94,
+    .month = 0x09,
+    .day = 0x19,
+    .version = 0xC0,
 };
 
 const Command = enum(u8) {
