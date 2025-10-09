@@ -68,8 +68,8 @@ pub fn execute_main_loop(psx: *PSXState, allocator: std.mem.Allocator) !void {
         {
             const tr_step = tracy.trace(@src());
             defer tr_step.end();
-            for (0..200_000) |_| {
-                cpu_execution.step(psx);
+            for (0..200) |_| {
+                cpu_execution.step_1k_times(psx);
             }
         }
 

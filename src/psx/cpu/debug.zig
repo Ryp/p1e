@@ -22,7 +22,7 @@ pub fn print_instruction(instruction: instructions.Instruction) void {
         .mtlo => |i| print_generic_rs("mtlo", i),
         .rfe => std.debug.print("rfe\n", .{}),
         .cop1 => std.debug.print("cop1\n", .{}),
-        .cop2 => std.debug.print("cop2\n", .{}),
+        .cop2 => std.debug.print("cop2\n", .{}), // FIXME implement
         .cop3 => std.debug.print("cop3\n", .{}),
 
         .mult => |i| print_generic_rs_rt("mult", i),
@@ -167,7 +167,7 @@ fn print_ralu_instruction(op_name: [:0]const u8, instruction: instructions.gener
 
 // FIXME Copy and move probably don't have the same way of printing
 fn print_cop_move_copy_instruction(op_name: [:0]const u8, instruction: instructions.generic_cop_mov) void {
-    std.debug.print("{s}{} ${},{}\n", .{ op_name, instruction.cop_index, instruction.cpu_rs, instruction.target });
+    std.debug.print("{s} ${},{}\n", .{ op_name, instruction.cpu_rs, instruction.target });
 }
 
 fn print_cop_bcn(instruction: instructions.generic_cop_bc) void {

@@ -2,6 +2,7 @@ pub const CPUState = struct {
     regs: Registers = .{},
     branch: bool = false,
     delay_slot: bool = false,
+    a: u32 = 0,
 
     pub fn write(self: @This(), writer: anytype) !void {
         try self.regs.write(writer);

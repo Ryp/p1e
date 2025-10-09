@@ -7,6 +7,7 @@ const cpu = @import("state.zig");
 const Registers = cpu.Registers;
 
 const mmio = @import("../mmio.zig");
+const cdrom = @import("../cdrom/execution.zig");
 const gte = @import("../gte/execution.zig");
 const exe_sideloading = @import("../exe_sideloading.zig");
 const save_state = @import("../save_state.zig");
@@ -14,10 +15,32 @@ const save_state = @import("../save_state.zig");
 const instructions = @import("instructions.zig");
 const debug = @import("debug.zig");
 
-const SideloadedExePath: ?[:0]const u8 = null;
+// const SideloadedExePath: ?[:0]const u8 = "/home/ryp/psxtest_cpx.exe";
+// const SideloadedExePath: ?[:0]const u8 = null;
+const SideloadedExePath: ?[:0]const u8 = "/home/ryp/hello_cd.exe";
 
-pub fn step(psx: *PSXState) void {
+const SkipShellExecution = false;
+
+pub fn step_1k_times(psx: *PSXState) void {
+    for (0..1000) |_| {
+        step(psx);
+    }
+
+    cdrom.execute_ticks(psx, 1000);
+}
+
+fn step(psx: *PSXState) void {
     defer psx.step_index += 1;
+
+    if (SkipShellExecution) {
+        if (psx.cpu.regs.pc == exe_sideloading.DefaultSideLoadingPC) {
+            psx.cpu.regs.pc = load_reg(psx.cpu.regs, .ra);
+            psx.cpu.branch = true;
+            psx.cpu.regs.next_pc = psx.cpu.regs.pc + 4;
+
+            std.debug.print("Skipping shell execution, jump to 0x{x}\n", .{psx.cpu.regs.pc});
+        }
+    }
 
     if (SideloadedExePath) |sideloaded_exe_path| {
         if (psx.cpu.regs.pc == exe_sideloading.DefaultSideLoadingPC) {
@@ -34,9 +57,8 @@ pub fn step(psx: *PSXState) void {
     }
 
     if (false) {
-        if (psx.step_index == 81674907) {
-            @branchHint(.cold);
-            var save_state_file = if (std.fs.cwd().createFile("tex.p1es", .{
+        if (psx.step_index == 530_000_000) {
+            var save_state_file = if (std.fs.cwd().createFile("hellocd_setmode.p1es", .{
                 .read = true,
                 .truncate = true,
                 .exclusive = false, // Set to true will ensure this file is created by us
@@ -86,16 +108,48 @@ pub fn step(psx: *PSXState) void {
 
     const instruction = instructions.decode_instruction(op_code);
 
-    if (config.enable_debug_print) {
-        debug.print_instruction(instruction);
-    }
-
     psx.cpu.delay_slot = psx.cpu.branch;
     psx.cpu.branch = false;
 
     if ((psx.cpu.regs.sr.interrupt_stack.current.enabled) and (@as(u3, @bitCast(psx.cpu.regs.cause.interrupt_pending)) & psx.cpu.regs.sr.interrupt_mask) != 0) {
         execute_exception(psx, .INT);
     } else {
+        if (config.enable_debug_print or psx.cpu.a > 0 and false) {
+            psx.cpu.a -= 1;
+
+            const pc_address: mmio.PSXAddress = @bitCast(psx.cpu.regs.current_instruction_pc);
+
+            switch (pc_address.mapping) {
+                .Useg, .Kseg0, .Kseg1 => {
+                    switch (pc_address.mapping) {
+                        .Useg => std.debug.print("U  ", .{}),
+                        .Kseg0 => std.debug.print("K0 ", .{}),
+                        .Kseg1 => std.debug.print("K1 ", .{}),
+                        else => unreachable,
+                    }
+
+                    switch (pc_address.offset) {
+                        mmio.RAM_Offset...mmio.RAM_OffsetEnd - 1 => {
+                            std.debug.print("RAM  ", .{});
+                        },
+                        mmio.BIOS_Offset...mmio.BIOS_OffsetEnd - 1 => {
+                            std.debug.print("BIOS ", .{});
+                        },
+                        else => {
+                            std.debug.print("???? ", .{});
+                        },
+                    }
+                },
+                .Kseg2 => {
+                    std.debug.print("K2 ---- ", .{});
+                },
+            }
+
+            std.debug.print("0x{x:0>8} ", .{psx.cpu.regs.current_instruction_pc});
+
+            debug.print_instruction(instruction);
+        }
+
         execute_instruction(psx, instruction);
     }
 
@@ -926,6 +980,9 @@ fn execute_exception_bad_address(psx: *PSXState, cause: cpu.ExceptionCause, addr
 }
 
 fn execute_exception(psx: *PSXState, cause: cpu.ExceptionCause) void {
+    psx.cpu.a = 200;
+    std.debug.print("Exception: {}\n", .{cause});
+
     psx.cpu.regs.cause = @bitCast(@as(u32, 0));
     psx.cpu.regs.cause.cause = cause;
     psx.cpu.regs.cause.branch_delay = if (psx.cpu.delay_slot) 1 else 0;
@@ -936,10 +993,10 @@ fn execute_exception(psx: *PSXState, cause: cpu.ExceptionCause) void {
         psx.cpu.regs.epc -%= 4;
     }
 
-    execute_interrupt_stack_push(psx);
-
     psx.cpu.regs.pc = if (psx.cpu.regs.sr.bev == 1) 0xbfc00180 else 0x80000080;
     psx.cpu.regs.next_pc = psx.cpu.regs.pc +% 4;
+
+    execute_interrupt_stack_push(psx);
 }
 
 fn execute_interrupt_stack_push(psx: *PSXState) void {

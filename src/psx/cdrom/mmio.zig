@@ -10,8 +10,10 @@ const execution = @import("execution.zig");
 pub fn load_mmio_u8(psx: *PSXState, offset: u29) u8 {
     std.debug.assert(offset >= MMIO.Offset and offset < MMIO.OffsetEnd);
 
+    psx.cpu.a = 1000;
+
     if (config.enable_cdrom_debug) {
-        std.debug.print("CDROM MMIO Load: offset={x} bank={}\n", .{ offset, psx.mmio.cdrom.index_status.index });
+        std.debug.print("CDROM MMIO Load:  offset=0x{x} bank={} | ", .{ offset, psx.mmio.cdrom.index_status.index });
     }
 
     switch (offset) {
@@ -48,12 +50,13 @@ pub fn load_mmio_u8(psx: *PSXState, offset: u29) u8 {
                             // FIXME
                             const response = psx.cdrom.response_fifo.pop() catch unreachable;
                             if (config.enable_cdrom_debug) {
-                                std.debug.print("Read response FIFO (got {x})\n", .{response});
+                                std.debug.print("Read response FIFO (got 0x{x})\n", .{response});
                             }
                             return response;
                         },
                         MMIO.CommandPort2_Offset => unreachable, // FIXME
                         MMIO.CommandPort3_Offset => {
+                            std.debug.print("Read IRQ request mask: 0x{x}\n", .{psx.cdrom.irq_requested_mask});
                             return psx.cdrom.irq_requested_mask; // FIXME
                         },
                         else => unreachable,
@@ -92,8 +95,10 @@ pub fn load_mmio_u16(psx: *PSXState, offset: u29) u16 {
 pub fn store_mmio_u8(psx: *PSXState, offset: u29, value: u8) void {
     std.debug.assert(offset >= MMIO.Offset and offset < MMIO.OffsetEnd);
 
+    psx.cpu.a = 200;
+
     if (config.enable_cdrom_debug) {
-        std.debug.print("CDROM MMIO Store: offset={x} bank={} value={x}\n", .{ offset, psx.mmio.cdrom.index_status.index, value });
+        std.debug.print("CDROM MMIO Store: offset=0x{x} bank={} value=0x{x} | ", .{ offset, psx.mmio.cdrom.index_status.index, value });
     }
 
     switch (offset) {
@@ -126,8 +131,11 @@ pub fn store_mmio_u8(psx: *PSXState, offset: u29, value: u8) void {
                         MMIO.CommandPort3_Offset => {
                             const request: @TypeOf(bank.request) = @bitCast(value);
                             std.debug.print("Ignored request: {}\n", .{request});
+
+                            std.debug.assert(request.zero_b0_4 == 0);
+
                             // FIXME
-                            unreachable;
+                            // unreachable;
                         },
                         else => unreachable,
                     }
@@ -158,9 +166,11 @@ pub fn store_mmio_u8(psx: *PSXState, offset: u29, value: u8) void {
                                 psx.cdrom.parameter_fifo.discard();
 
                                 if (config.enable_cdrom_debug) {
-                                    std.debug.print("RESET PARAM FIFO\n", .{});
+                                    std.debug.print("Reset Param FIFO\n", .{});
                                 }
                             }
+
+                            std.debug.print("Interrupt ACK {}\n", .{interrupt_flag_write});
 
                             psx.cdrom.irq_requested_mask &= ~interrupt_flag_write.b0_4_ack;
                         },
@@ -234,11 +244,12 @@ const MMIO_CDROM = packed struct {
                 // Before sending a command, write any parameter byte(s) to this address.
                 parameter_fifo: u8, // 1F801802h.Index0 - Parameter Fifo (W)
 
-                //   0-4 0    Not used (should be zero)
-                //   5   SMEN Want Command Start Interrupt on Next Command (0=No change, 1=Yes)
-                //   6   BFWR ...
-                //   7   BFRD Want Data         (0=No/Reset Data Fifo, 1=Yes/Load Data Fifo)
-                request: u8, // 1F801803h.Index0 - Request Register (W)
+                request: packed struct(u8) { // 1F801803h.Index0 - Request Register (W)
+                    zero_b0_4: u5, //   0-4 0    Not used (should be zero)
+                    SMEN: u1, //   5   SMEN Want Command Start Interrupt on Next Command (0=No change, 1=Yes)
+                    BFWR: u1, //   6   BFWR ...
+                    BFRD: u1, //   7   BFRD Want Data         (0=No/Reset Data Fifo, 1=Yes/Load Data Fifo)
+                },
             },
         },
         bank1: packed union {

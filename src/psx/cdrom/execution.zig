@@ -9,19 +9,131 @@ pub fn execute_command(psx: *PSXState, command_byte: u8) void {
     const command: Command = @enumFromInt(command_byte);
 
     if (config.enable_cdrom_debug) {
-        std.debug.print("CDROM Execute command: {x}\n", .{command_byte});
+        std.debug.print("CDROM Execute command: {}\n", .{command});
     }
 
+    std.debug.assert(psx.cdrom.active_timed_command == null);
+
     switch (command) {
+        .Sync => unreachable,
         .Getstat => {
             if (config.enable_cdrom_debug) {
-                std.debug.print("CDROM GetStat: {}\n", .{psx.cdrom.stat});
+                std.debug.print("stat: {}\n", .{psx.cdrom.stat});
             }
 
-            psx.cdrom.response_fifo.push(@bitCast(psx.cdrom.stat)) catch unreachable;
-
-            request_cdrom_interrupt(psx, .ACK);
+            request_interrupt_and_push_stat(psx, .ACK);
         },
+        .Setloc => {
+            const BCD_Byte = packed struct(u8) {
+                lo: u4,
+                hi: u4,
+            };
+
+            const minute_bcd: BCD_Byte = @bitCast(psx.cdrom.parameter_fifo.pop() catch unreachable);
+            const second_bcd: BCD_Byte = @bitCast(psx.cdrom.parameter_fifo.pop() catch unreachable);
+            const frame_bcd: BCD_Byte = @bitCast(psx.cdrom.parameter_fifo.pop() catch unreachable);
+
+            std.debug.assert(minute_bcd.hi < 10 and minute_bcd.lo < 10);
+            std.debug.assert(second_bcd.hi < 6 and second_bcd.lo < 10);
+            std.debug.assert(frame_bcd.hi < 10 and frame_bcd.lo < 10);
+
+            const minute = @as(u8, minute_bcd.hi) * 10 + minute_bcd.lo;
+            const second = @as(u8, second_bcd.hi) * 10 + second_bcd.lo;
+            const frame = @as(u8, frame_bcd.hi) * 10 + frame_bcd.lo;
+
+            std.debug.assert(frame < 75);
+
+            psx.cdrom.seek_target = .{
+                .minute = minute,
+                .second = second,
+                .frame = frame,
+            };
+
+            std.debug.print("Setloc: {}\n", .{psx.cdrom.seek_target.?});
+
+            request_interrupt_and_push_stat(psx, .ACK);
+        },
+        .Play => unreachable,
+        .Forward => unreachable,
+        .Backward => unreachable,
+        .ReadN => {
+            psx.cdrom.stat.main_state = .Reading; // FIXME
+
+            request_interrupt_and_push_stat(psx, .ACK);
+
+            const readn_ticks = 5000; // FIXME
+            psx.cdrom.active_timed_command = .{ .command = .ReadN, .ticks_remaining = readn_ticks };
+
+            std.debug.print("CDROM ReadN command received, but incomplete!\n", .{});
+        },
+        .MotorOn => unreachable,
+        .Stop => unreachable,
+        .Pause => unreachable,
+        .Init => {
+            // Reset stuff
+            psx.cdrom.parameter_fifo.discard();
+            psx.cdrom.response_fifo.discard();
+            psx.cdrom.seek_target = null;
+
+            // Start motor
+            psx.cdrom.stat.is_spindle_motor_on = true;
+
+            request_interrupt_and_push_stat(psx, .ACK);
+
+            const init_ticks = 5000; // FIXME
+            psx.cdrom.active_timed_command = .{ .command = .Init, .ticks_remaining = init_ticks };
+        },
+        .Mute => unreachable,
+        .Demute => {
+            std.debug.print("CDROM Demute command received, but unimplemented\n", .{});
+            request_interrupt_and_push_stat(psx, .ACK);
+        },
+        .Setfilter => unreachable,
+        .Setmode => {
+            const SetMode = packed struct(u8) {
+                cdda: u1, // 0   CDDA        (0=Off, 1=Allow to Read CD-DA Sectors; ignore missing EDC)
+                auto_pause: u1, // 1   AutoPause   (0=Off, 1=Auto Pause upon End of Track) ;for Audio Play
+                enable_report_interrupts: u1, // 2   Report      (0=Off, 1=Enable Report-Interrupts for Audio Play)
+                xa_filter: u1, // 3   XA-Filter   (0=Off, 1=Process only XA-ADPCM sectors that match Setfilter)
+                ignore_bit: u1, // 4   Ignore Bit  (0=Normal, 1=Ignore Sector Size and Setloc position)
+                sector_size: enum(u1) { // 5   Sector Size (0=800h=DataOnly, 1=924h=WholeSectorExceptSyncBytes)
+                    DataOnly,
+                    WholeSectorExceptSyncBytes,
+                },
+                xa_adpcm: u1, // 6   XA-ADPCM    (0=Off, 1=Send XA-ADPCM sectors to SPU Audio Input)
+                speed: enum(u1) { // 7   Speed       (0=Normal speed, 1=Double speed)
+                    Normal,
+                    Double,
+                },
+            };
+
+            const mode: SetMode = @bitCast(psx.cdrom.parameter_fifo.pop() catch unreachable);
+            std.debug.print("{} Setmode: {}\n", .{ psx.step_index, mode });
+
+            // FIXME
+            std.debug.assert(0 == mode.cdda);
+            std.debug.assert(0 == mode.auto_pause);
+            std.debug.assert(0 == mode.enable_report_interrupts);
+            std.debug.assert(0 == mode.xa_filter);
+            std.debug.assert(0 == mode.ignore_bit);
+            // std.debug.assert(!mode.sector_size);
+            std.debug.assert(0 == mode.xa_adpcm);
+            // std.debug.assert(!mode.speed);
+
+            request_interrupt_and_push_stat(psx, .ACK);
+
+            std.debug.print("CDROM Setmode command received, but unimplemented\n", .{});
+        },
+        .Getparam => unreachable,
+        .GetlocL => unreachable,
+        .GetlocP => unreachable,
+        .SetSession => unreachable,
+        .GetTN => unreachable,
+        .GetTD => unreachable,
+        .SeekL => unreachable,
+        .SeekP => unreachable,
+        .SetClock => unreachable,
+        .GetClock => unreachable,
         .Test => {
             const sub_command: TestSubCommand = @enumFromInt(psx.cdrom.parameter_fifo.pop() catch unreachable);
 
@@ -31,35 +143,80 @@ pub fn execute_command(psx: *PSXState, command_byte: u8) void {
 
             switch (sub_command) {
                 .GetDateBCD => {
-                    if (config.enable_cdrom_debug) {
-                        std.debug.print("GET DATE BCD\n", .{});
-                    }
-
                     const bios_version = HC05ControllerBiosVersionBCD_PU7;
                     psx.cdrom.response_fifo.push(bios_version.year) catch unreachable;
                     psx.cdrom.response_fifo.push(bios_version.month) catch unreachable;
                     psx.cdrom.response_fifo.push(bios_version.day) catch unreachable;
                     psx.cdrom.response_fifo.push(bios_version.version) catch unreachable;
 
-                    request_cdrom_interrupt(psx, .ACK);
+                    request_interrupt(psx, .ACK);
                 },
                 else => @panic("Unknown CDROM Test command"),
             }
         },
-        else => @panic("Unknown CDROM command"),
+        .GetID => unreachable,
+        .ReadS => unreachable,
+        .Reset => unreachable,
+        .GetQ => unreachable,
+        .ReadTOC => unreachable,
+        .VideoCD => unreachable,
+        .Secret1 => unreachable,
+        .Secret2 => unreachable,
+        .Secret3 => unreachable,
+        .Secret4 => unreachable,
+        .Secret5 => unreachable,
+        .Secret6 => unreachable,
+        .Secret7 => unreachable,
+        .SecretLock => unreachable,
+        .Crash => unreachable,
+        else => @panic("Invalid CDROM command"),
     }
 }
 
-fn request_cdrom_interrupt(psx: *PSXState, irq_mask: IRQMask) void {
+pub fn execute_ticks(psx: *PSXState, ticks: u32) void {
+    if (psx.cdrom.active_timed_command) |*timed_command| {
+        timed_command.ticks_remaining -|= ticks;
+
+        if (timed_command.ticks_remaining == 0) {
+            const command = timed_command.command;
+            if (config.enable_cdrom_debug) {
+
+        std.debug.print("CDROM Execute timed command: {}\n", .{command});
+    }
+
+    switch (command) {
+        .Init => {
+            request_interrupt_and_push_stat(psx, .Complete);
+            psx.cdrom.active_timed_command = null;
+        },
+        .ReadN => {
+            // FIXME put data in!
+            request_interrupt_and_push_stat(psx, .DataReady);
+            @panic("");
+        },
+        else => @panic("CDROM timed command not implemented"),
+    }
+        }
+    }
+}
+
+fn request_interrupt(psx: *PSXState, irq_mask: IRQMask) void {
     psx.cdrom.irq_requested_mask = @intFromEnum(irq_mask); // Weird behavior of int in a mask encoding...
 
     if (psx.cdrom.irq_requested_mask & psx.cdrom.irq_enabled_mask != 0) {
         cpu_execution.request_hardware_interrupt(psx, .IRQ2_CDRom);
 
         if (config.enable_cdrom_debug) {
-            std.debug.print("CDROM Interrupt!\n", .{});
+            std.debug.print("CDROM interrupt requested with {}!\n", .{irq_mask});
         }
     }
+}
+
+fn request_interrupt_and_push_stat(psx: *PSXState, irq_mask: IRQMask) void {
+    request_interrupt(psx, irq_mask);
+
+    std.debug.assert(psx.cdrom.response_fifo.is_empty());
+    psx.cdrom.response_fifo.push(@bitCast(psx.cdrom.stat)) catch unreachable;
 }
 
 const IRQMask = enum(u5) {
@@ -100,7 +257,7 @@ const HC05ControllerBiosVersionBCD_PU7 = HC05ControllerBiosVersionBCD{
     .version = 0xC0,
 };
 
-const Command = enum(u8) {
+pub const Command = enum(u8) {
     //                   Command          Parameters      Response(s)
     Sync = 0x00, //      00h -            -               INT5(11h,40h)  ;reportedly "Sync" uh?
     Getstat = 0x01, //   01h Getstat      -               INT3(stat)
@@ -134,8 +291,7 @@ const Command = enum(u8) {
     GetQ = 0x1D, //      1Dh GetQ       E adr,point       INT3(stat), INT2(10bytesSubQ,peak_lo) ;\not
     ReadTOC = 0x1E, //   1Eh ReadTOC      -               INT3(late-stat), INT2(stat)           ;/vC0
     VideoCD = 0x1F, //   1Fh VideoCD      sub,a,b,c,d,e   INT3(stat,a,b,c,d,e)   ;<-- SCPH-5903 only
-    Invalid1F = 0x20, // 1Fh..4Fh -       -               INT5(11h,40h)  ;-Unused/invalid
-    // MORE
+    // 1Fh..4Fh -       -               INT5(11h,40h)  ;-Unused/invalid
     Secret1 = 0x50, //   50h Secret 1     -               INT5(11h,40h)  ;\
     Secret2 = 0x51, //   51h Secret 2     "Licensed by"   INT5(11h,40h)  ;
     Secret3 = 0x52, //   52h Secret 3     "Sony"          INT5(11h,40h)  ; Secret Unlock Commands
@@ -146,6 +302,7 @@ const Command = enum(u8) {
     SecretLock = 0x57, //57h SecretLock   -               INT5(11h,40h)  ;-Secret Lock Command
     Crash = 0x58, //     58h..5Fh Crash   -               Crashes the HC05 (jumps into a data area)
     //                   6Fh..FFh -       -               INT5(11h,40h)  ;-Unused/invalid
+    _,
 };
 
 const TestSubCommand = enum(u8) {

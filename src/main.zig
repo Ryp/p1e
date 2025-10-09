@@ -48,6 +48,24 @@ pub fn main_with_allocator(allocator: std.mem.Allocator) !void {
     var psx = try psx_state.create_state(embedded_bios, allocator);
     defer psx_state.destroy_state(&psx, allocator);
 
+    if (true) {
+        var exe_file = if (std.fs.cwd().openFile("./hellocd_setmode.p1es", .{})) |f| f else |err| {
+            std.debug.print("Failed to open exe file: {}\n", .{err});
+            return;
+        };
+        defer exe_file.close();
+
+        const save_state = @import("psx/save_state.zig");
+
+        save_state.load(&psx, exe_file.deprecatedReader()) catch |err| {
+            std.debug.print("Failed to load save: {}\n", .{err});
+            @panic("Save load failed");
+        };
+    }
+
+    const cdrom = try create_and_load_cdrom();
+    defer destroy_state(cdrom);
+
     try loop.run(&psx, allocator);
 }
 
@@ -56,4 +74,51 @@ const scph1001_bin_md5: md5_scalar = 0x924e392ed05558ffdb115408c263dccf;
 
 comptime {
     std.debug.assert(@sizeOf(md5_scalar) == Md5.digest_length);
+}
+
+const native_os = @import("builtin").os.tag;
+
+const TransformerWeights = struct {
+    checkpoint_file: std.fs.File,
+    checkpoint_mmap_ptr: []align(std.heap.page_size_min) u8,
+};
+
+fn create_and_load_cdrom() !TransformerWeights {
+    const cdrom_path = "/home/ryp/Mega Man X4 (USA).bin";
+    var cdrom_file = if (std.fs.cwd().openFile(cdrom_path, .{})) |f| f else |err| {
+        std.debug.print("Failed to open exe file: {}\n", .{err});
+        return error.InvalidCDROMPath;
+    };
+
+    defer cdrom_file.close();
+    var weights: TransformerWeights = undefined;
+
+    weights.checkpoint_file = if (std.fs.cwd().openFile(cdrom_path, .{ .mode = .read_only })) |f| f else |err| {
+        std.debug.print("error: couldn't open CDROM file: '{s}'\n", .{cdrom_path});
+        return err;
+    };
+    errdefer weights.checkpoint_file.close();
+
+    const checkpoint_size_bytes = try weights.checkpoint_file.getEndPos();
+
+    weights.checkpoint_mmap_ptr = try switch (native_os) {
+        .linux, .macos => std.posix.mmap(null, checkpoint_size_bytes, std.posix.PROT.READ, .{ .TYPE = .PRIVATE }, weights.checkpoint_file.handle, 0),
+        .windows => @panic("Unsupported OS"),
+        else => @panic("Unsupported OS"),
+    };
+    errdefer std.posix.munmap(weights.checkpoint_mmap_ptr);
+
+    return weights;
+}
+
+fn destroy_state(weights: TransformerWeights) void {
+    switch (native_os) {
+        .linux, .macos => {
+            std.posix.munmap(weights.checkpoint_mmap_ptr);
+        },
+        .windows => @panic("Unsupported OS"),
+        else => @panic("Unsupported OS"),
+    }
+
+    weights.checkpoint_file.close();
 }

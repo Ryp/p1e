@@ -278,7 +278,7 @@ fn store_generic(comptime T: type, psx: *PSXState, address: PSXAddress, value: T
 // 0x00000000 0x80000000 0xa0000000 2048K Main RAM
 pub const RAM_SizeBytes = 2 * 1024 * 1024;
 pub const RAM_Offset = 0x00000000;
-const RAM_OffsetEnd = RAM_Offset + RAM_SizeBytes;
+pub const RAM_OffsetEnd = RAM_Offset + RAM_SizeBytes;
 
 // 0x1f000000 0x9f000000 0xbf000000 8192K Expansion Region 1
 const Expansion_SizeBytes = 8 * 1024 * 1024;
@@ -294,8 +294,8 @@ const Scratchpad_OffsetEnd = Scratchpad_Offset + Scratchpad_SizeBytes;
 
 // 0x1fc00000 0x9fc00000 0xbfc00000 512K BIOS ROM
 pub const BIOS_SizeBytes = 512 * 1024;
-const BIOS_Offset = 0x1fc00000;
-const BIOS_OffsetEnd = BIOS_Offset + BIOS_SizeBytes;
+pub const BIOS_Offset = 0x1fc00000;
+pub const BIOS_OffsetEnd = BIOS_Offset + BIOS_SizeBytes;
 
 // 0x1ffe0130constant
 const CacheControl_Offset = 0x1ffe0130;

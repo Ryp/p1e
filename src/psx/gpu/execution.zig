@@ -192,7 +192,6 @@ fn execute_gp0_command(psx: *PSXState, op_code: g0.OpCode, command_bytes: []cons
                         ._16x16 => 16,
                         .Variable => unreachable,
                     };
-                    _ = px_size;
 
                     if (draw_rect.is_textured) {
                         const rect_textured = std.mem.bytesAsValue(g0.DrawRectTextured, command_bytes);
@@ -200,12 +199,12 @@ fn execute_gp0_command(psx: *PSXState, op_code: g0.OpCode, command_bytes: []cons
                         unreachable;
                     } else {
                         const rect_monochrome = std.mem.bytesAsValue(g0.DrawRectMonochrome, command_bytes);
-                        std.debug.print("DrawRectMonochrome: {any} and {any}\n", .{ draw_rect, rect_monochrome });
 
-                        const tl = rect_monochrome.position_top_left;
-                        _ = tl;
+                        if (config.enable_gpu_debug) {
+                            std.debug.print("DrawRectMonochrome: {any} and {any}\n", .{ draw_rect, rect_monochrome });
+                        }
 
-                        unreachable;
+                        draw_rectangle(psx, rect_monochrome.position_top_left, .{ .x = px_size, .y = px_size }, rect_monochrome.color);
                     }
                 },
                 .Variable => {
@@ -490,6 +489,23 @@ fn fill_rectangle_vram(psx: *PSXState, fill_rectangle: g0.FillRectangleInVRAM) v
 
         const offset_x = fill_rectangle.position_top_left.x;
         const vram_type_line_rect = vram_type_line[offset_x .. offset_x + fill_rectangle.size.x];
+
+        @memset(vram_type_line_rect, fill_color_rgb5);
+    }
+}
+
+// FIXME
+fn draw_rectangle(psx: *PSXState, offset: g0.PackedVertexPos, size: g0.PackedVertexPos, color: pixel_format.PackedRGB8) void {
+    const fill_color_rgb5 = pixel_format.convert_rgb8_to_rgb5a1(color, 0);
+
+    const vram_typed = std.mem.bytesAsSlice(PackedRGB5A1, psx.gpu.vram);
+
+    for (0..size.y) |y| {
+        const offset_y = (offset.y + y) * stride_y;
+
+        const vram_type_line = vram_typed[offset_y .. offset_y + stride_y];
+
+        const vram_type_line_rect = vram_type_line[offset.x .. offset.x + size.x];
 
         @memset(vram_type_line_rect, fill_color_rgb5);
     }

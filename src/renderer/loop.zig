@@ -15,7 +15,7 @@ pub fn run(psx: *PSXState, allocator: std.mem.Allocator) !void {
         try sdl.execute_main_loop(psx, allocator);
     } else {
         while (true) {
-            cpu_execution.step(psx);
+            cpu_execution.step_1k_times(psx);
         }
     }
 }
