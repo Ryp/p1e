@@ -109,8 +109,8 @@ pub const DMAChannelIndex = enum(u3) {
     Channel0_MDEC_IN, // RAM to MDEC
     Channel1_MDEC_OUT, // MDEC to RAM
     Channel2_GPU, // lists + image data
-    Channel3_SPU,
-    Channel4_CDROM, // CDROM to RAM
+    Channel3_CDROM, // CDROM to RAM
+    Channel4_SPU,
     Channel5_PIO, // Expansion Port
     Channel6_OTC, // reverse clear OT (GPU related)
     Invalid,
@@ -121,8 +121,8 @@ fn get_dma_channel(psx: *PSXState, index: DMAChannelIndex) *DMAChannel {
         .Channel0_MDEC_IN => &psx.mmio.dma.channel0,
         .Channel1_MDEC_OUT => &psx.mmio.dma.channel1,
         .Channel2_GPU => &psx.mmio.dma.channel2,
-        .Channel3_SPU => &psx.mmio.dma.channel3,
-        .Channel4_CDROM => &psx.mmio.dma.channel4,
+        .Channel3_CDROM => &psx.mmio.dma.channel3,
+        .Channel4_SPU => &psx.mmio.dma.channel4,
         .Channel5_PIO => &psx.mmio.dma.channel5,
         .Channel6_OTC => &psx.mmio.dma.channel6,
         .Invalid => unreachable,
