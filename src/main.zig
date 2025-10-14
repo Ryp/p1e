@@ -5,6 +5,7 @@ const Md5 = std.crypto.hash.Md5;
 const psx_state = @import("psx/state.zig");
 const loop = @import("renderer/loop.zig");
 
+const clap = @import("clap");
 const tracy = @import("tracy.zig");
 const builtin = @import("builtin");
 

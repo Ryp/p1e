@@ -36,6 +36,10 @@
     // Once all dependencies are fetched, `zig build` no longer requires
     // internet connectivity.
     .dependencies = .{
+        .clap = .{
+            .url = "https://github.com/Hejsil/zig-clap/archive/b7e3348ed60f99ba32c75aa707ff7c87adc31b36.zip",
+            .hash = "clap-0.11.0-oBajB-TnAQC7yPLnZRT5WzHZ_4Ly4dX2OILskli74b9H",
+        },
         .bios = .{
             .url = "https://github.com/CubeFun/SCPH1001.bin/archive/dfd8d866d7218a7b889e1c4ab769b745ccd8a31e.zip",
             .hash = "N-V-__8AAAAACAA6EjMOzmN_4NRGVjzlhR2f3i2DUAq4V2uT",

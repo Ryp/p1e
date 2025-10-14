@@ -13,6 +13,9 @@ pub fn build(b: *std.Build) void {
         }),
     });
 
+    const clap = b.dependency("clap", .{});
+    exe.root_module.addImport("clap", clap.module("clap"));
+
     const default_bios_path = b.dependency("bios", .{}).path("SCPH1001.bin");
     const bios_path = b.option(std.Build.LazyPath, "bios_path", "Path to SCPH1001.BIN") orelse default_bios_path;
 
