@@ -2,17 +2,26 @@ const std = @import("std");
 
 const PSXState = @import("../state.zig").PSXState;
 const mmio = @import("../mmio.zig");
+const config = @import("../config.zig");
+
 const gpu_execution = @import("../gpu/execution.zig");
+const cdrom_execution = @import("../cdrom/execution.zig");
 
 const dma_mmio = @import("mmio.zig");
 
 pub fn execute_dma_transfer(psx: *PSXState, channel: *dma_mmio.DMAChannel, channel_index: dma_mmio.DMAChannelIndex) void {
-    // std.debug.print("DMA Transfer {} in mode {}\n", .{ channel_index, channel.channel_control.sync_mode });
+    if (config.enable_dma_debug) {
+        std.debug.print("DMA Transfer {} in mode {}\n", .{ channel_index, channel.channel_control.sync_mode });
+    }
 
     switch (channel.channel_control.sync_mode) {
         .Manual, .Request => {
             var address = channel.base_address.offset;
             var word_count_left = get_transfer_word_count(channel);
+
+            if (config.enable_dma_debug) {
+                std.debug.print("DMA Transfer 0x{x} bytes\n", .{word_count_left * 4});
+            }
 
             while (word_count_left > 0) : (address = switch (channel.channel_control.adress_step) {
                 .Inc4 => address +% 4,
@@ -23,13 +32,17 @@ pub fn execute_dma_transfer(psx: *PSXState, channel: *dma_mmio.DMAChannel, chann
                 switch (channel.channel_control.transfer_direction) {
                     .ToRAM => {
                         switch (channel_index) {
-                            .Channel0_MDEC_IN, .Channel1_MDEC_OUT, .Channel3_CDROM, .Channel4_SPU, .Channel5_PIO => {
+                            .Channel0_MDEC_IN, .Channel1_MDEC_OUT, .Channel4_SPU, .Channel5_PIO => {
                                 std.debug.print("DMA transfer to RAM on channel {} not implemented yet\n", .{channel_index});
                                 unreachable;
                             },
                             .Channel2_GPU => {
                                 const command_word = gpu_execution.load_gpuread_u32(psx);
                                 mmio.store_u32(psx, address_masked, command_word);
+                            },
+                            .Channel3_CDROM => {
+                                const sector_word: u32 = cdrom_execution.load_data_u32(psx);
+                                mmio.store_u32(psx, address_masked, sector_word);
                             },
                             .Channel6_OTC => {
                                 const src_word = switch (word_count_left) {

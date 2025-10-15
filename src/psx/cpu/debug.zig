@@ -1,5 +1,7 @@
 const std = @import("std");
 
+const mmio = @import("../mmio.zig");
+
 const instructions = @import("instructions.zig");
 
 pub fn print_instruction(instruction: instructions.Instruction) void {
@@ -22,7 +24,7 @@ pub fn print_instruction(instruction: instructions.Instruction) void {
         .mtlo => |i| print_generic_rs("mtlo", i),
         .rfe => std.debug.print("rfe\n", .{}),
         .cop1 => std.debug.print("cop1\n", .{}),
-        .cop2 => std.debug.print("cop2\n", .{}),
+        .cop2 => std.debug.print("cop2_gte_fixme\n", .{}), // FIXME implement
         .cop3 => std.debug.print("cop3\n", .{}),
 
         .mult => |i| print_generic_rs_rt("mult", i),
@@ -167,7 +169,7 @@ fn print_ralu_instruction(op_name: [:0]const u8, instruction: instructions.gener
 
 // FIXME Copy and move probably don't have the same way of printing
 fn print_cop_move_copy_instruction(op_name: [:0]const u8, instruction: instructions.generic_cop_mov) void {
-    std.debug.print("{s}{} ${},{}\n", .{ op_name, instruction.cop_index, instruction.cpu_rs, instruction.target });
+    std.debug.print("{s} ${},{}\n", .{ op_name, instruction.cpu_rs, instruction.target });
 }
 
 fn print_cop_bcn(instruction: instructions.generic_cop_bc) void {
@@ -176,4 +178,38 @@ fn print_cop_bcn(instruction: instructions.generic_cop_bc) void {
 
 fn print_cop_load_store(op_name: [:0]const u8, instruction: instructions.generic_cop_load_store) void {
     std.debug.print("{s}{} ${},{}(${})\n", .{ op_name, instruction.cop_index, instruction.rt_cop, instruction.imm_i16, instruction.rs });
+}
+
+pub fn print_instruction_with_pc_decorations(instruction: instructions.Instruction, current_pc: u32) void {
+    const pc_address: mmio.PSXAddress = @bitCast(current_pc);
+
+    switch (pc_address.mapping) {
+        .Useg, .Kseg0, .Kseg1 => {
+            switch (pc_address.mapping) {
+                .Useg => std.debug.print("U  ", .{}),
+                .Kseg0 => std.debug.print("K0 ", .{}),
+                .Kseg1 => std.debug.print("K1 ", .{}),
+                else => unreachable,
+            }
+
+            switch (pc_address.offset) {
+                mmio.RAM_Offset...mmio.RAM_OffsetEnd - 1 => {
+                    std.debug.print("RAM  ", .{});
+                },
+                mmio.BIOS_Offset...mmio.BIOS_OffsetEnd - 1 => {
+                    std.debug.print("BIOS ", .{});
+                },
+                else => {
+                    std.debug.print("???? ", .{});
+                },
+            }
+        },
+        .Kseg2 => {
+            std.debug.print("K2 ---- ", .{});
+        },
+    }
+
+    std.debug.print("0x{x:0>8} ", .{current_pc});
+
+    print_instruction(instruction);
 }

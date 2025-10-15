@@ -247,7 +247,7 @@ pub fn main(psx: *psx_state.PSXState, allocator: std.mem.Allocator) !void {
         c.glfwGetFramebufferSize(window, &w, &h);
 
         while (!psx.gpu.backend.pending_draw) {
-            cpu_execution.step(psx);
+            cpu_execution.step_1k_times(psx);
         }
 
         const fence_wait_result = try gc.dev.waitForFences(1, @ptrCast(&gc.frame_fence), .true, std.math.maxInt(u64));

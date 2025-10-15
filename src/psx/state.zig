@@ -21,6 +21,14 @@ pub const PSXState = struct {
     step_index: u64 = 0,
     headless: bool = true,
 
+    // FIXME
+    load_cdrom_path: ?[]const u8 = null,
+    load_state_path: ?[]const u8 = null,
+    save_state_path: ?[]const u8 = null,
+    save_state_after_ticks: ?u64 = 0,
+    load_exe_path: ?[]const u8 = null,
+    skip_shell_execution: bool = false,
+
     pub fn write(self: @This(), writer: anytype) !void {
         try self.cpu.write(writer);
         try self.gte.write(writer);

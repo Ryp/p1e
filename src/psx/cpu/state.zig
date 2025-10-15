@@ -264,3 +264,10 @@ pub const ExceptionCause = enum(u5) {
 // PRID=00000001h on Playstation with CPU CXD8530BQ/CXD8530CQ
 // PRID=00000002h on Playstation with CPU CXD8606CQ
 pub const CPU_PRID = 0x00_00_00_02;
+
+pub const ClockTicksPerSeconds = 33_868_800;
+
+comptime {
+    const std = @import("std");
+    std.debug.assert(ClockTicksPerSeconds == 44100 * 256 * 3);
+}

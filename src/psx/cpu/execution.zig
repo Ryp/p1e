@@ -7,6 +7,7 @@ const cpu = @import("state.zig");
 const Registers = cpu.Registers;
 
 const mmio = @import("../mmio.zig");
+const cdrom = @import("../cdrom/execution.zig");
 const gte = @import("../gte/execution.zig");
 const exe_sideloading = @import("../exe_sideloading.zig");
 const save_state = @import("../save_state.zig");
@@ -14,12 +15,26 @@ const save_state = @import("../save_state.zig");
 const instructions = @import("instructions.zig");
 const debug = @import("debug.zig");
 
-const SideloadedExePath: ?[:0]const u8 = null;
+pub fn step_1k_times(psx: *PSXState) void {
+    for (0..1000) |_| {
+        step(psx);
+    }
 
-pub fn step(psx: *PSXState) void {
+    cdrom.execute_ticks(psx, 1000);
+}
+
+fn step(psx: *PSXState) void {
     defer psx.step_index += 1;
 
-    if (SideloadedExePath) |sideloaded_exe_path| {
+    if (psx.skip_shell_execution) {
+        if (psx.cpu.regs.pc == exe_sideloading.DefaultSideLoadingPC) {
+            psx.cpu.regs.pc = load_reg(psx.cpu.regs, .ra);
+            psx.cpu.branch = true;
+            psx.cpu.regs.next_pc = psx.cpu.regs.pc + 4;
+
+            std.debug.print("Skipping shell execution, jump to 0x{x}\n", .{psx.cpu.regs.pc});
+        }
+    } else if (psx.load_exe_path) |sideloaded_exe_path| {
         if (psx.cpu.regs.pc == exe_sideloading.DefaultSideLoadingPC) {
             var exe_file = if (std.fs.cwd().openFile(sideloaded_exe_path, .{})) |f| f else |err| {
                 std.debug.print("Failed to open exe file: {}\n", .{err});
@@ -33,10 +48,11 @@ pub fn step(psx: *PSXState) void {
         }
     }
 
-    if (false) {
-        if (psx.step_index == 81674907) {
-            @branchHint(.cold);
-            var save_state_file = if (std.fs.cwd().createFile("tex.p1es", .{
+    if (psx.save_state_path) |save_state_path| {
+        std.debug.assert(psx.save_state_after_ticks != null);
+
+        if (psx.step_index == psx.save_state_after_ticks.?) {
+            var save_state_file = if (std.fs.cwd().createFile(save_state_path, .{
                 .read = true,
                 .truncate = true,
                 .exclusive = false, // Set to true will ensure this file is created by us
@@ -48,7 +64,10 @@ pub fn step(psx: *PSXState) void {
 
             save_state.save(psx.*, save_state_file.deprecatedWriter()) catch |err| {
                 std.debug.print("Failed to save state: {}\n", .{err});
+                // FIXME error handling
             };
+
+            @panic("SAVED!");
         }
     }
 
@@ -79,23 +98,23 @@ pub fn step(psx: *PSXState) void {
 
     const op_code = mmio.load_u32(psx, psx.cpu.regs.pc);
 
-    psx.cpu.regs.pc = psx.cpu.regs.next_pc;
-    psx.cpu.regs.next_pc +%= 4;
-
-    execute_delay_load(psx);
-
     const instruction = instructions.decode_instruction(op_code);
 
-    if (config.enable_debug_print) {
-        debug.print_instruction(instruction);
-    }
+    psx.cpu.regs.pc = psx.cpu.regs.next_pc;
+    psx.cpu.regs.next_pc +%= 4;
 
     psx.cpu.delay_slot = psx.cpu.branch;
     psx.cpu.branch = false;
 
+    execute_delay_load(psx);
+
     if ((psx.cpu.regs.sr.interrupt_stack.current.enabled) and (@as(u3, @bitCast(psx.cpu.regs.cause.interrupt_pending)) & psx.cpu.regs.sr.interrupt_mask) != 0) {
         execute_exception(psx, .INT);
     } else {
+        if (config.enable_debug_print) {
+            debug.print_instruction_with_pc_decorations(instruction, psx.cpu.regs.current_instruction_pc);
+        }
+
         execute_instruction(psx, instruction);
     }
 
@@ -926,6 +945,10 @@ fn execute_exception_bad_address(psx: *PSXState, cause: cpu.ExceptionCause, addr
 }
 
 fn execute_exception(psx: *PSXState, cause: cpu.ExceptionCause) void {
+    if (config.enable_debug_print) {
+        std.debug.print("Exception: {}\n", .{cause});
+    }
+
     psx.cpu.regs.cause = @bitCast(@as(u32, 0));
     psx.cpu.regs.cause.cause = cause;
     psx.cpu.regs.cause.branch_delay = if (psx.cpu.delay_slot) 1 else 0;
@@ -936,10 +959,10 @@ fn execute_exception(psx: *PSXState, cause: cpu.ExceptionCause) void {
         psx.cpu.regs.epc -%= 4;
     }
 
-    execute_interrupt_stack_push(psx);
-
     psx.cpu.regs.pc = if (psx.cpu.regs.sr.bev == 1) 0xbfc00180 else 0x80000080;
     psx.cpu.regs.next_pc = psx.cpu.regs.pc +% 4;
+
+    execute_interrupt_stack_push(psx);
 }
 
 fn execute_interrupt_stack_push(psx: *PSXState) void {

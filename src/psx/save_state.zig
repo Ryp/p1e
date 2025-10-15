@@ -4,22 +4,16 @@ const psx_state = @import("state.zig");
 const mmio = @import("mmio.zig");
 
 const Magic = "P1ES"; // PlayStation 1 Emulator Save
-const VersionMajor = 0; // Format version
-const VersionMinor = 6;
-const VersionPatch = 0;
+const Version = 4; // Format version
+const SupportedVersionMax = Version;
+const SupportedVersionMin = Version;
 
-// FIXME do somthing with this
-const Header = packed struct {
+const Header = packed struct(u64) {
     magic_0: u8 = Magic[0],
     magic_1: u8 = Magic[1],
     magic_2: u8 = Magic[2],
     magic_3: u8 = Magic[3],
-    version: packed struct {
-        major: u8 = VersionMajor,
-        minor: u8 = VersionMinor,
-        patch: u8 = VersionPatch,
-        _zero: u8 = 0,
-    } = .{},
+    version: u32 = Version, // FIXME Not compatible with other endianness
 };
 
 // FIXME handle errors properly
@@ -30,10 +24,8 @@ pub fn save(psx: psx_state.PSXState, writer: anytype) !void {
 
     try psx.write(writer);
 
-    std.debug.print("Saved state with format version: {}.{}.{} at step {}\n", .{
-        header.version.major,
-        header.version.minor,
-        header.version.patch,
+    std.debug.print("Saved state with format version: {} at step {}\n", .{
+        header.version,
         psx.step_index,
     });
 }
@@ -48,30 +40,18 @@ pub fn load(psx: *psx_state.PSXState, reader: anytype) !void {
         return error.InvalidMagic;
     }
 
-    if (header.version.major > VersionMajor) {
-        std.debug.print("Unsupported major version: {}, supports up to {}\n", .{ header.version.major, VersionMajor });
-        return error.UnsupportedNewerMajorVersion;
-    } else if (header.version.major < VersionMajor) {
-        // FIXME
-        std.debug.print("Unsupported major version: {}, supports from {}\n", .{ header.version.major, VersionMajor });
-        return error.UnsupportedOlderMajorVersion;
-    } else {
-        if (header.version.minor > VersionMinor) {
-            std.debug.print("Unsupported minor version: {}, supports up to {}\n", .{ header.version.minor, VersionMinor });
-            return error.UnsupportedNewerMinorVersion;
-        } else if (header.version.minor < VersionMinor) {
-            // FIXME
-            std.debug.print("Unsupported minor version: {}, supports from {}\n", .{ header.version.minor, VersionMinor });
-            return error.UnsupportedOlderMinorVersion;
-        }
+    if (header.version > SupportedVersionMax) {
+        std.debug.print("Unsupported version: {}, supports up to {}\n", .{ header.version, SupportedVersionMax });
+        return error.UnsupportedNewerVersion;
+    } else if (header.version < SupportedVersionMin) {
+        std.debug.print("Unsupported version: {}, supports from {}\n", .{ header.version, SupportedVersionMin });
+        return error.UnsupportedOlderVersion;
     }
 
     try psx.read(reader);
 
-    std.debug.print("Loaded state with format version: {}.{}.{} at step {}\n", .{
-        header.version.major,
-        header.version.minor,
-        header.version.patch,
+    std.debug.print("Loaded state with format version: {} at step {}\n", .{
+        header.version,
         psx.step_index,
     });
 }

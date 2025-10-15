@@ -64,6 +64,10 @@ pub fn store_mmio_generic(comptime T: type, psx: *PSXState, offset: u29, value: 
                     .Reserved => unreachable,
                 };
 
+                if (channel.channel_control.sync_mode == .Manual and channel.channel_control.start_or_trigger == 0) {
+                    unreachable;
+                }
+
                 if (channel.channel_control.status == .StartOrEnableOrBusy and trigger) {
                     execution.execute_dma_transfer(psx, channel, dma_offset.channel_index);
                 }
@@ -215,15 +219,15 @@ pub const DMAChannel = packed struct {
     // SyncMode=1 decrements BA to zero, SyncMode=0 with chopping enabled decrements BC to zero (aside from that two cases, D#_BCR isn't changed during/after transfer).
     block_control: packed union {
         raw: u32,
-        manual: packed struct { // For SyncMode=0 (ie. for OTC and CDROM):
+        manual: packed struct(u32) { // For SyncMode=0 (ie. for OTC and CDROM):
             word_count: u16, //   0-15  BC    Number of words (0001h..FFFFh) (or 0=10000h words)
             _unused: u16, //   16-31 0     Not used (usually 0 for OTC, or 1 ("one block") for CDROM)
         },
-        request: packed struct { // For SyncMode=1 (ie. for MDEC, SPU, and GPU-vram-data):
+        request: packed struct(u32) { // For SyncMode=1 (ie. for MDEC, SPU, and GPU-vram-data):
             block_size: u16, //   0-15  BS    Blocksize (words) ;for GPU/SPU max 10h, for MDEC max 20h
             block_count: u16, //   16-31 BA    Amount of blocks  ;ie. total length = BS*BA words
         },
-        linked_list: packed struct { // For SyncMode=2 (ie. for GPU-command-lists):
+        linked_list: packed struct(u32) { // For SyncMode=2 (ie. for GPU-command-lists):
             zero_b0_31: u32, //   0-31  0     Not used (should be zero) (transfer ends at END-CODE in list)
         },
     } = .{ .raw = undefined }, // FIXME
@@ -232,7 +236,7 @@ pub const DMAChannel = packed struct {
     // The Start/Trigger bit is automatically cleared upon BEGIN of the transfer, this bit needs to be set only in SyncMode=0 (setting it in other SyncModes would force the first block to be transferred instantly without DRQ, which isn't desired).
     // The Start/Busy bit is automatically cleared upon COMPLETION of the transfer, this bit must be always set for all SyncModes when starting a transfer.
     // For DMA6/OTC there are some restrictions, D6_CHCR has only three read/write-able bits: Bit24,28,30. All other bits are read-only: Bit1 is always 1 (step=backward), and the other bits are always 0.
-    channel_control: packed struct {
+    channel_control: packed struct(u32) {
         transfer_direction: enum(u1) {
             ToRAM = 0,
             FromRAM = 1,

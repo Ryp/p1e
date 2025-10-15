@@ -99,6 +99,7 @@ pub fn store_mmio_generic(comptime T: type, psx: *PSXState, offset: u29, value: 
                 if (config.enable_ports_debug) {
                     std.debug.print("IOPorts ACK IRQ\n", .{});
                 }
+
                 psx.mmio.ports.joy.stat.irq7_requested = false;
             }
 
