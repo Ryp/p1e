@@ -115,9 +115,6 @@ fn step(psx: *PSXState) void {
 
         execute_instruction(psx, instruction);
     }
-
-    // Do this when exactly?
-    @memcpy(&psx.cpu.regs.r_in, &psx.cpu.regs.r_out);
 }
 
 fn execute_instruction(psx: *PSXState, instruction: instructions.Instruction) void {
@@ -206,7 +203,7 @@ fn load_reg_signed(registers: Registers, register_name: cpu.RegisterName) i32 {
 fn load_reg_generic(load_type: type, registers: Registers, register_name: cpu.RegisterName) load_type {
     const value = switch (register_name) {
         .zero => 0,
-        else => registers.r_in[@intFromEnum(register_name)],
+        else => registers.gprs[@intFromEnum(register_name)],
     };
 
     if (config.enable_debug_print) {
@@ -231,7 +228,7 @@ fn store_reg_generic(registers: *Registers, register_name: cpu.RegisterName, val
 
     switch (register_name) {
         .zero => {},
-        else => registers.r_out[@intFromEnum(register_name)] = @bitCast(value),
+        else => registers.gprs[@intFromEnum(register_name)] = @bitCast(value),
     }
 }
 

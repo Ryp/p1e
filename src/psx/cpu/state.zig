@@ -24,8 +24,7 @@ pub const Registers = struct {
     current_instruction_pc: u32 = undefined,
     epc: u32 = undefined, // Exception Program Counter
 
-    r_in: [32]u32 = undefined, // FIXME does it have an initial value?
-    r_out: [32]u32 = undefined, // FIXME does it have an initial value?
+    gprs: [32]u32 = undefined, // FIXME does it have an initial value?
     hi: u32 = undefined, // FIXME does it have an initial value?
     lo: u32 = undefined, // FIXME does it have an initial value?
     bad_vaddr: u32 = undefined, // FIXME does it have an initial value?
@@ -44,9 +43,8 @@ pub const Registers = struct {
         try writer.writeInt(@TypeOf(self.current_instruction_pc), self.current_instruction_pc, .little);
         try writer.writeInt(@TypeOf(self.epc), self.epc, .little);
 
-        for (self.r_in, self.r_out) |r_in, r_out| {
-            try writer.writeInt(u32, r_in, .little);
-            try writer.writeInt(u32, r_out, .little);
+        for (self.gprs) |gpr| {
+            try writer.writeInt(u32, gpr, .little);
         }
 
         try writer.writeInt(@TypeOf(self.hi), self.hi, .little);
@@ -75,9 +73,8 @@ pub const Registers = struct {
         self.current_instruction_pc = try reader.readInt(@TypeOf(self.current_instruction_pc), .little);
         self.epc = try reader.readInt(@TypeOf(self.epc), .little);
 
-        for (&self.r_in, &self.r_out) |*r_in, *r_out| {
-            r_in.* = try reader.readInt(u32, .little);
-            r_out.* = try reader.readInt(u32, .little);
+        for (&self.gprs) |*gpr| {
+            gpr.* = try reader.readInt(u32, .little);
         }
 
         self.hi = try reader.readInt(@TypeOf(self.hi), .little);

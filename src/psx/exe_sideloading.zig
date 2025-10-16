@@ -65,19 +65,16 @@ pub fn load(psx: *PSXState, reader: anytype) !void {
     psx.cpu.regs.next_pc = header.pc + 4;
 
     const gp_index = @intFromEnum(cpu_state.RegisterName.gp);
-    psx.cpu.regs.r_in[gp_index] = header.gp;
-    psx.cpu.regs.r_out[gp_index] = header.gp;
+    psx.cpu.regs.gprs[gp_index] = header.gp;
 
     if (header.sp_fp_base != 0) {
         const sp_fp_offset = header.sp_fp_base + header.sp_fp_offset;
 
         const sp_index = @intFromEnum(cpu_state.RegisterName.sp);
-        psx.cpu.regs.r_in[sp_index] = sp_fp_offset;
-        psx.cpu.regs.r_out[sp_index] = sp_fp_offset;
+        psx.cpu.regs.gprs[sp_index] = sp_fp_offset;
 
         const fp_index = @intFromEnum(cpu_state.RegisterName.fp);
-        psx.cpu.regs.r_in[fp_index] = sp_fp_offset;
-        psx.cpu.regs.r_out[fp_index] = sp_fp_offset;
+        psx.cpu.regs.gprs[fp_index] = sp_fp_offset;
     }
 
     // Unsupported fields

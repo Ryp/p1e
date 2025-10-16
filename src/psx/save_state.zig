@@ -4,7 +4,7 @@ const psx_state = @import("state.zig");
 const bus = @import("bus.zig");
 
 const Magic = "P1ES"; // PlayStation 1 Emulator Save
-const Version = 4; // Format version
+const Version = 5; // Format version
 const SupportedVersionMax = Version;
 const SupportedVersionMin = Version;
 
