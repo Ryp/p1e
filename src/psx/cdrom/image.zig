@@ -128,53 +128,42 @@ pub const RawSectorSizeBytes = 2352;
 pub const FramesPerSeconds = 75;
 pub const LeadInSectors = 2 * FramesPerSeconds;
 
-comptime {
-    std.debug.assert(RawSectorSizeBytes == @sizeOf(RawSector));
-}
-
+// NOTE: The PSX mostly uses Mode2 sectors
+//
 // Audio sectors can be all audio (metadata is outside the sector in this case)
-const RawSector = packed struct(u18816) { // 2352 bytes (0x930)
-    sync: u96, // 12 bytes used to locate the start of a sector
+// EDC = Error Detection Code
+// ECC = Error Correction Code
+const RawSector = packed struct(u_bytes(RawSectorSizeBytes)) {
+    sync: u_bytes(12), // Used to locate the start of a sector
     header: SectorHeader, // 4 bytes
-    mode: packed union { // 2336 bytes (0x920)
-        _0: packed struct(u18688) { // Mode0 - Empty
-            zero: u18688, //  010h 920h Zerofilled
+    mode: packed union {
+        _0: packed struct { // Mode0 - Empty
+            zero: u_bytes(2336),
         },
-        _1: packed struct(u18688) { // Mode1 (Original CDROM) - EDC + ECC
-            //  010h 800h Data (2048 bytes)
-            //  810h 4    EDC (checksum across [000h..80Fh])
-            //  814h 8    Zerofilled
-            //  81Ch 114h ECC (error correction codes)
-            data: u16384, // 2048 bytes (0x800)
-            edc_crc32: u32, // 4 bytes - Error Detection Code (CRC32)
-            zero: u64, // 8 bytes - Always zero
-            ecc_reed_solomon: u2208, // 276 bytes - Error Correction Code (Reed-Solomon)
+        _1: packed struct(u_bytes(2336)) { // Mode1 (Original CDROM) - EDC + ECC
+            data: u_bytes(2048),
+            edc_crc32: u32,
+            zero: u_bytes(8),
+            ecc_reed_solomon: u_bytes(276),
 
             const CRC32_OffsetStart = 0x0;
             const CRC32_OffsetEnd = 0x810;
         },
-        _2: packed struct(u18688) { // Mode2 aka CD-XA
-            //  010h 4    Sub-Header (File, Channel, Submode, Codinginfo)
-            //  014h 4    Copy of Sub-Header
+        _2: packed struct(u_bytes(2336)) { // Mode2 aka CD-XA
             sub_header: Mode2SubHeader, // 4 bytes
             sub_header_copy: Mode2SubHeader, // 4 bytes
-            form: packed union { // 2324 bytes (0x914)
-                _1: packed struct(u18624) { // Form1 - ECC + EDC
-                    //  018h 800h Data (2048 bytes)
-                    //  818h 4    EDC (checksum across [010h..817h])
-                    //  81Ch 114h ECC (error correction codes)
-                    data: u16384, // 2048 bytes (0x800)
-                    edc_crc32: u32, // 4 bytes - Error Detection Code (CRC32)
-                    ecc_reed_solomon: u2208, // 276 bytes - Error Correction Code (Reed-Solomon)
+            form: packed union {
+                _1: packed struct(u_bytes(2328)) { // Form1 - ECC + EDC
+                    data: u_bytes(2048),
+                    edc_crc32: u32,
+                    ecc_reed_solomon: u_bytes(276),
 
                     const CRC32_OffsetStart = 0x10;
                     const CRC32_OffsetEnd = 0x818;
                 },
-                _2: packed struct(u18624) { // Form2 - ECC
-                    //  018h 914h Data (2324 bytes)
-                    //  92Ch 4    EDC (checksum across [010h..92Bh]) (or 00000000h if no EDC)
-                    data: u18592,
-                    edc_crc32_optional: u32, // 4 bytes - Error Detection Code (CRC32)
+                _2: packed struct(u_bytes(2328)) { // Form2 - ECC
+                    data: u_bytes(2324),
+                    edc_crc32_optional: u32, // Can be zero
 
                     const CRC32_OffsetStart = 0x10;
                     const CRC32_OffsetEnd = 0x92c;
@@ -183,7 +172,7 @@ const RawSector = packed struct(u18816) { // 2352 bytes (0x930)
         },
     },
 
-    const ValidSync: u96 = 0x00_ff_ff_ff_ff_ff_ff_ff_ff_ff_ff_00;
+    const ValidSync: u_bytes(12) = 0x00_ff_ff_ff_ff_ff_ff_ff_ff_ff_ff_00;
 };
 
 const SectorHeader = packed struct(u32) {
@@ -256,4 +245,14 @@ fn check_cdrom_crc32(bytes: []const u8, expected_crc32: u32) !void {
         std.debug.print("error: computed CRC32 0x{x} doesn't match header value 0x{x}\n", .{ computed_crc32, expected_crc32 });
         return error.InvalidCRC32Hash;
     }
+}
+
+// Helper for defining large backing types in bytes instead of bits.
+fn u_bytes(bytes: comptime_int) type {
+    return @Type(.{
+        .int = .{
+            .signedness = .unsigned,
+            .bits = 8 * bytes,
+        },
+    });
 }
