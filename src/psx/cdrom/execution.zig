@@ -109,7 +109,9 @@ pub fn execute_primary_command(psx: *PSXState, command: mmio.Command) void {
         },
         .Mute => unreachable,
         .Demute => {
-            std.debug.print("CDROM Demute command received, but unimplemented\n", .{});
+            if (config.enable_cdrom_debug) {
+                std.debug.print("CDROM Demute command received, but unimplemented\n", .{});
+            }
 
             request_interrupt_and_push_stat(psx, .ACK);
         },

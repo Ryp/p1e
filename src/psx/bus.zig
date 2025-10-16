@@ -245,7 +245,7 @@ fn store_generic(comptime T: type, psx: *PSXState, address: Address, value: T) v
                 },
                 else => {
                     std.debug.print("address = {x}\n", .{address.offset});
-                    @panic("Can't read there!");
+                    @panic("Can't write there!");
                 },
             }
         },
