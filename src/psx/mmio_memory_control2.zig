@@ -11,7 +11,7 @@ pub fn load_mmio_generic(comptime T: type, psx: *PSXState, offset: u29) T {
 
     std.debug.assert(T != u8);
 
-    const type_slice = mmio.get_mutable_mmio_slice_generic(T, psx, offset);
+    const type_slice = mmio.get_mutable_mmio_slice(T, psx, offset);
 
     switch (offset) {
         MMIO.RamSize_Offset => {
@@ -27,7 +27,7 @@ pub fn store_mmio_generic(comptime T: type, psx: *PSXState, offset: u29, value: 
 
     std.debug.assert(T != u8);
 
-    const type_slice = mmio.get_mutable_mmio_slice_generic(T, psx, offset);
+    const type_slice = mmio.get_mutable_mmio_slice(T, psx, offset);
 
     switch (offset) {
         MMIO.RamSize_Offset => {

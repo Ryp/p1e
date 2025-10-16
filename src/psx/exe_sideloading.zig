@@ -4,8 +4,7 @@ const state = @import("state.zig");
 const cpu_state = @import("cpu/state.zig");
 const PSXState = state.PSXState;
 
-const mmio = @import("mmio.zig");
-const PSXAddress = mmio.PSXAddress;
+const bus = @import("bus.zig");
 
 pub const DefaultSideLoadingPC = 0x80030000;
 
@@ -14,7 +13,7 @@ const Header = packed struct(u448) {
     zero: u64, //  008h-00Fh Zerofilled
     pc: u32, //  010h      Initial PC                   (usually 80010000h, or higher)
     gp: u32, //  014h      Initial GP/R28               (usually 0)
-    ram_dst_addr: PSXAddress, //  018h      Destination Address in RAM   (usually 80010000h, or higher)
+    ram_dst_addr: bus.Address, //  018h      Destination Address in RAM   (usually 80010000h, or higher)
     exe_size_bytes: u32, //  01Ch      Filesize (must be N*800h)    (excluding 800h-byte header)
     data_section_offset: u32, //  020h      Data section Start Address   (usually 0)
     data_section_size_bytes: u32, //  024h      Data Section Size in bytes   (usually 0)
@@ -58,7 +57,7 @@ pub fn load(psx: *PSXState, reader: anytype) !void {
     // Skip the rest of the header until the RAM content
     try reader.skipBytes(BinaryOffset - @sizeOf(Header), .{});
 
-    const ram_at_load_offset = psx.ram[header.ram_dst_addr.offset - mmio.RAM_Offset ..][0..header.exe_size_bytes];
+    const ram_at_load_offset = psx.ram[header.ram_dst_addr.offset - bus.RAM_Offset ..][0..header.exe_size_bytes];
 
     _ = try reader.readAll(ram_at_load_offset);
 

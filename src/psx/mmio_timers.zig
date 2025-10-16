@@ -17,7 +17,7 @@ pub fn load_mmio_generic(comptime T: type, psx: *PSXState, offset: u29) T {
             .Value, .Mode, .Target => {
                 std.debug.assert(T != u8);
 
-                const type_slice = mmio.get_mutable_mmio_slice_generic(T, psx, offset);
+                const type_slice = mmio.get_mutable_mmio_slice(T, psx, offset);
 
                 return std.mem.readInt(T, type_slice, .little);
             },
@@ -41,7 +41,7 @@ pub fn store_mmio_generic(comptime T: type, psx: *PSXState, offset: u29, value: 
             .Value, .Mode, .Target => {
                 std.debug.assert(T != u8);
 
-                const type_slice = mmio.get_mutable_mmio_slice_generic(T, psx, offset);
+                const type_slice = mmio.get_mutable_mmio_slice(T, psx, offset);
 
                 // In case of u32 writes, just keep the full value in.
                 std.mem.writeInt(T, type_slice, value, .little);

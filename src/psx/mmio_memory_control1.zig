@@ -9,18 +9,10 @@ pub fn load_mmio_u32(psx: *PSXState, offset: u29) u32 {
     std.debug.assert(offset >= MMIO.Offset);
     std.debug.assert(offset < MMIO.OffsetEnd);
 
-    const type_slice = mmio.get_mutable_mmio_slice_generic(u32, psx, offset);
+    const type_slice = mmio.get_mutable_mmio_slice(u32, psx, offset);
 
     switch (offset) {
-        MMIO.Expansion1BaseAddress_Offset,
-        MMIO.Expansion2BaseAddress_Offset,
-        MMIO.Expansion1DelaySize_Offset,
-        MMIO.Expansion3DelaySize_Offset,
-        MMIO.BiosDelaySize_Offset,
-        MMIO.SpuDelaySize_Offset,
-        MMIO.CDROMDelaySize_Offset,
-        MMIO.Expansion2DelaySize_Offset,
-        MMIO.ComDelay_Offset => {
+        MMIO.Expansion1BaseAddress_Offset, MMIO.Expansion2BaseAddress_Offset, MMIO.Expansion1DelaySize_Offset, MMIO.Expansion3DelaySize_Offset, MMIO.BiosDelaySize_Offset, MMIO.SpuDelaySize_Offset, MMIO.CDROMDelaySize_Offset, MMIO.Expansion2DelaySize_Offset, MMIO.ComDelay_Offset => {
             return std.mem.readInt(u32, type_slice, .little);
         },
         else => {
@@ -34,7 +26,7 @@ pub fn store_mmio_u32(psx: *PSXState, offset: u29, value: u32) void {
     std.debug.assert(offset >= MMIO.Offset);
     std.debug.assert(offset < MMIO.OffsetEnd);
 
-    const type_slice = mmio.get_mutable_mmio_slice_generic(u32, psx, offset);
+    const type_slice = mmio.get_mutable_mmio_slice(u32, psx, offset);
 
     switch (offset) {
         MMIO.Expansion1BaseAddress_Offset => {
@@ -45,13 +37,7 @@ pub fn store_mmio_u32(psx: *PSXState, offset: u29, value: u32) void {
             std.debug.assert(value == 0x1f802000);
             std.mem.writeInt(u32, type_slice, value, .little);
         },
-        MMIO.Expansion1DelaySize_Offset,
-        MMIO.Expansion3DelaySize_Offset,
-        MMIO.BiosDelaySize_Offset,
-        MMIO.SpuDelaySize_Offset,
-        MMIO.CDROMDelaySize_Offset,
-        MMIO.Expansion2DelaySize_Offset,
-        MMIO.ComDelay_Offset => {
+        MMIO.Expansion1DelaySize_Offset, MMIO.Expansion3DelaySize_Offset, MMIO.BiosDelaySize_Offset, MMIO.SpuDelaySize_Offset, MMIO.CDROMDelaySize_Offset, MMIO.Expansion2DelaySize_Offset, MMIO.ComDelay_Offset => {
             const delay_size: MMIO.Packed.DelaySize = @bitCast(value);
             std.debug.assert(delay_size.zero_b21_23 == 0);
             std.debug.assert(delay_size.zero_b28 == 0);

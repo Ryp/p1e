@@ -8,7 +8,7 @@ const execution = @import("execution.zig");
 
 // FIXME this might break if the type is not u32
 pub fn load_mmio_generic(comptime T: type, psx: *PSXState, offset: u29) T {
-    const type_slice = mmio.get_mutable_mmio_slice_generic(T, psx, offset);
+    const type_slice = mmio.get_mutable_mmio_slice(T, psx, offset);
 
     std.debug.assert(offset < MMIO.OffsetEnd);
     std.debug.assert(offset >= MMIO.Offset);
@@ -29,7 +29,7 @@ pub fn load_mmio_generic(comptime T: type, psx: *PSXState, offset: u29) T {
 }
 
 pub fn store_mmio_generic(comptime T: type, psx: *PSXState, offset: u29, value: T) void {
-    const type_slice = mmio.get_mutable_mmio_slice_generic(T, psx, offset);
+    const type_slice = mmio.get_mutable_mmio_slice(T, psx, offset);
 
     std.debug.assert(offset >= MMIO.Offset);
     std.debug.assert(offset < MMIO.OffsetEnd);

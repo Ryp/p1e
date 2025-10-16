@@ -1,7 +1,7 @@
 const std = @import("std");
 
 const PSXState = @import("../state.zig").PSXState;
-const mmio = @import("../mmio.zig");
+const bus = @import("../bus.zig");
 const config = @import("../config.zig");
 
 const gpu_execution = @import("../gpu/execution.zig");
@@ -38,11 +38,11 @@ pub fn execute_dma_transfer(psx: *PSXState, channel: *dma_mmio.DMAChannel, chann
                             },
                             .Channel2_GPU => {
                                 const command_word = gpu_execution.load_gpuread_u32(psx);
-                                mmio.store_u32(psx, address_masked, command_word);
+                                bus.store_u32(psx, address_masked, command_word);
                             },
                             .Channel3_CDROM => {
                                 const sector_word: u32 = cdrom_execution.load_data_u32(psx);
-                                mmio.store_u32(psx, address_masked, sector_word);
+                                bus.store_u32(psx, address_masked, sector_word);
                             },
                             .Channel6_OTC => {
                                 const src_word = switch (word_count_left) {
@@ -50,7 +50,7 @@ pub fn execute_dma_transfer(psx: *PSXState, channel: *dma_mmio.DMAChannel, chann
                                     else => (address -% 4) & 0x00_1f_ff_ff,
                                 };
 
-                                mmio.store_u32(psx, address_masked, src_word);
+                                bus.store_u32(psx, address_masked, src_word);
                             },
                             .Invalid => unreachable,
                         }
@@ -58,7 +58,7 @@ pub fn execute_dma_transfer(psx: *PSXState, channel: *dma_mmio.DMAChannel, chann
                     .FromRAM => {
                         switch (channel_index) {
                             .Channel2_GPU => {
-                                const command_word = mmio.load_u32(psx, address_masked);
+                                const command_word = bus.load_u32(psx, address_masked);
 
                                 gpu_execution.store_gp0_u32(psx, command_word);
                             },
@@ -86,11 +86,11 @@ pub fn execute_dma_transfer(psx: *PSXState, channel: *dma_mmio.DMAChannel, chann
             };
 
             while (true) {
-                const header: GPUCommandHeader = @bitCast(mmio.load_u32(psx, header_address));
+                const header: GPUCommandHeader = @bitCast(bus.load_u32(psx, header_address));
 
                 for (0..header.word_count) |word_index| {
                     const command_word_address = (header_address + 4 * @as(u24, @intCast(word_index + 1))) & 0x1f_ff_fc;
-                    const command_word = mmio.load_u32(psx, command_word_address);
+                    const command_word = bus.load_u32(psx, command_word_address);
 
                     gpu_execution.store_gp0_u32(psx, command_word);
                 }

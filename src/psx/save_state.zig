@@ -1,7 +1,7 @@
 const std = @import("std");
 
 const psx_state = @import("state.zig");
-const mmio = @import("mmio.zig");
+const bus = @import("bus.zig");
 
 const Magic = "P1ES"; // PlayStation 1 Emulator Save
 const Version = 4; // Format version
@@ -58,7 +58,7 @@ pub fn load(psx: *psx_state.PSXState, reader: anytype) !void {
 
 test "State serialization" {
     const allocator = std.heap.page_allocator;
-    const bios = std.mem.zeroes([mmio.BIOS_SizeBytes]u8);
+    const bios = std.mem.zeroes([bus.BIOS_SizeBytes]u8);
 
     var psx = try psx_state.create_state(bios, allocator);
     defer psx_state.destroy_state(&psx, allocator);

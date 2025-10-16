@@ -1,6 +1,6 @@
 const std = @import("std");
 
-const mmio = @import("../mmio.zig");
+const bus = @import("../bus.zig");
 
 const instructions = @import("instructions.zig");
 
@@ -181,7 +181,7 @@ fn print_cop_load_store(op_name: [:0]const u8, instruction: instructions.generic
 }
 
 pub fn print_instruction_with_pc_decorations(instruction: instructions.Instruction, current_pc: u32) void {
-    const pc_address: mmio.PSXAddress = @bitCast(current_pc);
+    const pc_address: bus.Address = @bitCast(current_pc);
 
     switch (pc_address.mapping) {
         .Useg, .Kseg0, .Kseg1 => {
@@ -193,10 +193,10 @@ pub fn print_instruction_with_pc_decorations(instruction: instructions.Instructi
             }
 
             switch (pc_address.offset) {
-                mmio.RAM_Offset...mmio.RAM_OffsetEnd - 1 => {
+                bus.RAM_Offset...bus.RAM_OffsetEnd - 1 => {
                     std.debug.print("RAM  ", .{});
                 },
-                mmio.BIOS_Offset...mmio.BIOS_OffsetEnd - 1 => {
+                bus.BIOS_Offset...bus.BIOS_OffsetEnd - 1 => {
                     std.debug.print("BIOS ", .{});
                 },
                 else => {

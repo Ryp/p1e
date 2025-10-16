@@ -5,6 +5,7 @@ const gte = @import("gte/state.zig");
 const gpu = @import("gpu/state.zig");
 const cdrom = @import("cdrom/state.zig");
 const ports = @import("ports/state.zig");
+const bus = @import("bus.zig");
 const mmio = @import("mmio.zig");
 
 pub const PSXState = struct {
@@ -15,8 +16,8 @@ pub const PSXState = struct {
     ports: ports.PortsState = .{},
     mmio: mmio.MMIO = .{},
     ram: []u8,
-    bios: [mmio.BIOS_SizeBytes]u8,
-    scratchpad: [mmio.Scratchpad_SizeBytes]u8,
+    bios: [bus.BIOS_SizeBytes]u8,
+    scratchpad: [bus.Scratchpad_SizeBytes]u8,
 
     step_index: u64 = 0,
     headless: bool = true,
@@ -74,15 +75,15 @@ pub const PSXState = struct {
     }
 };
 
-pub fn create_state(bios: [mmio.BIOS_SizeBytes]u8, allocator: std.mem.Allocator) !PSXState {
-    const ram = try allocator.alloc(u8, mmio.RAM_SizeBytes);
+pub fn create_state(bios: [bus.BIOS_SizeBytes]u8, allocator: std.mem.Allocator) !PSXState {
+    const ram = try allocator.alloc(u8, bus.RAM_SizeBytes);
     errdefer allocator.free(ram);
 
     return PSXState{
         .gpu = try gpu.create_gpu_state(allocator),
         .ram = ram,
         .bios = bios,
-        .scratchpad = std.mem.zeroes([mmio.Scratchpad_SizeBytes]u8),
+        .scratchpad = std.mem.zeroes([bus.Scratchpad_SizeBytes]u8),
     };
 }
 

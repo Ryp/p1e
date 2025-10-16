@@ -6,7 +6,7 @@ const config = @import("../config.zig");
 const cpu = @import("state.zig");
 const Registers = cpu.Registers;
 
-const mmio = @import("../mmio.zig");
+const bus = @import("../bus.zig");
 const cdrom = @import("../cdrom/execution.zig");
 const gte = @import("../gte/execution.zig");
 const exe_sideloading = @import("../exe_sideloading.zig");
@@ -71,7 +71,7 @@ fn step(psx: *PSXState) void {
         }
     }
 
-    const address_typed: mmio.PSXAddress = @bitCast(psx.cpu.regs.pc);
+    const address_typed: bus.Address = @bitCast(psx.cpu.regs.pc);
     const t1_value = load_reg(psx.cpu.regs, .t1);
 
     if (config.enable_tty_print) {
@@ -96,7 +96,7 @@ fn step(psx: *PSXState) void {
         return;
     }
 
-    const op_code = mmio.load_u32(psx, psx.cpu.regs.pc);
+    const op_code = bus.load_u32(psx, psx.cpu.regs.pc);
 
     const instruction = instructions.decode_instruction(op_code);
 
@@ -665,7 +665,7 @@ fn execute_lb(psx: *PSXState, instruction: instructions.lb) void {
     const address_base = load_reg(psx.cpu.regs, instruction.rs);
     const address = wrapping_add_u32_i32(address_base, instruction.imm_i16);
 
-    const value: i8 = @bitCast(mmio.load_u8(psx, address));
+    const value: i8 = @bitCast(bus.load_u8(psx, address));
     const value_sign_extended: i32 = value;
 
     psx.cpu.regs.pending_load = .{ .register = instruction.rt, .value = @bitCast(value_sign_extended) };
@@ -675,7 +675,7 @@ fn execute_lbu(psx: *PSXState, instruction: instructions.lbu) void {
     const address_base = load_reg(psx.cpu.regs, instruction.rs);
     const address = wrapping_add_u32_i32(address_base, instruction.imm_i16);
 
-    const value: u8 = mmio.load_u8(psx, address);
+    const value: u8 = bus.load_u8(psx, address);
 
     psx.cpu.regs.pending_load = .{ .register = instruction.rt, .value = value };
 }
@@ -685,7 +685,7 @@ fn execute_lh(psx: *PSXState, instruction: instructions.lh) void {
     const address = wrapping_add_u32_i32(address_base, instruction.imm_i16);
 
     if (address % 2 == 0) {
-        const value: i16 = @bitCast(mmio.load_u16(psx, address));
+        const value: i16 = @bitCast(bus.load_u16(psx, address));
         const value_sign_extended: i32 = value;
 
         psx.cpu.regs.pending_load = .{ .register = instruction.rt, .value = @bitCast(value_sign_extended) };
@@ -699,7 +699,7 @@ fn execute_lhu(psx: *PSXState, instruction: instructions.lhu) void {
     const address = wrapping_add_u32_i32(address_base, instruction.imm_i16);
 
     if (address % 2 == 0) {
-        const value = mmio.load_u16(psx, address);
+        const value = bus.load_u16(psx, address);
 
         psx.cpu.regs.pending_load = .{ .register = instruction.rt, .value = value };
     } else {
@@ -712,7 +712,7 @@ fn execute_lw(psx: *PSXState, instruction: instructions.lw) void {
     const address = wrapping_add_u32_i32(address_base, instruction.imm_i16);
 
     if (address % 4 == 0) {
-        const value = mmio.load_u32(psx, address);
+        const value = bus.load_u32(psx, address);
 
         psx.cpu.regs.pending_load = .{ .register = instruction.rt, .value = value };
     } else {
@@ -725,18 +725,21 @@ fn execute_lwl(psx: *PSXState, instruction: instructions.lwl) void {
     const address = wrapping_add_u32_i32(address_base, instruction.imm_i16);
     const address_aligned = address & ~@as(u32, 0b11);
 
-    const load_value = mmio.load_u32(psx, address_aligned);
+    const load_value = bus.load_u32(psx, address_aligned);
 
-    const previous_value = if (psx.cpu.regs.pending_load) |pending_load|
-        if (pending_load.is_unaligned) pending_load.value else @panic("lwr with pending load not unaligned")
-    else
-        load_reg(psx.cpu.regs, instruction.rt);
+    var rt_ignoring_load_delay = load_reg(psx.cpu.regs, instruction.rt);
+
+    if (psx.cpu.regs.pending_load) |pending_load| {
+        if (pending_load.register == instruction.rt) {
+            rt_ignoring_load_delay = pending_load.value;
+        }
+    }
 
     const result = switch (address % 4) {
-        0 => previous_value & 0x00_ff_ff_ff | load_value << 24,
-        1 => previous_value & 0x00_00_ff_ff | load_value << 16,
-        2 => previous_value & 0x00_00_00_ff | load_value << 8,
-        3 => previous_value & 0x00_00_00_00 | load_value << 0,
+        0 => rt_ignoring_load_delay & 0x00_ff_ff_ff | load_value << 24,
+        1 => rt_ignoring_load_delay & 0x00_00_ff_ff | load_value << 16,
+        2 => rt_ignoring_load_delay & 0x00_00_00_ff | load_value << 8,
+        3 => rt_ignoring_load_delay & 0x00_00_00_00 | load_value << 0,
         else => unreachable,
     };
 
@@ -748,18 +751,21 @@ fn execute_lwr(psx: *PSXState, instruction: instructions.lwr) void {
     const address = wrapping_add_u32_i32(address_base, instruction.imm_i16);
     const address_aligned = address & ~@as(u32, 0b11);
 
-    const load_value = mmio.load_u32(psx, address_aligned);
+    const load_value = bus.load_u32(psx, address_aligned);
 
-    const previous_value = if (psx.cpu.regs.pending_load) |pending_load|
-        if (pending_load.is_unaligned) pending_load.value else @panic("lwr with pending load not unaligned")
-    else
-        load_reg(psx.cpu.regs, instruction.rt);
+    var rt_ignoring_load_delay = load_reg(psx.cpu.regs, instruction.rt);
+
+    if (psx.cpu.regs.pending_load) |pending_load| {
+        if (pending_load.register == instruction.rt) {
+            rt_ignoring_load_delay = pending_load.value;
+        }
+    }
 
     const result = switch (address % 4) {
-        0 => previous_value & 0x00_00_00_00 | load_value >> 0,
-        1 => previous_value & 0xff_00_00_00 | load_value >> 8,
-        2 => previous_value & 0xff_ff_00_00 | load_value >> 16,
-        3 => previous_value & 0xff_ff_ff_00 | load_value >> 24,
+        0 => rt_ignoring_load_delay & 0x00_00_00_00 | load_value >> 0,
+        1 => rt_ignoring_load_delay & 0xff_00_00_00 | load_value >> 8,
+        2 => rt_ignoring_load_delay & 0xff_ff_00_00 | load_value >> 16,
+        3 => rt_ignoring_load_delay & 0xff_ff_ff_00 | load_value >> 24,
         else => unreachable,
     };
 
@@ -772,7 +778,7 @@ fn execute_sb(psx: *PSXState, instruction: instructions.sb) void {
     const address_base = load_reg(psx.cpu.regs, instruction.rs);
     const address = wrapping_add_u32_i32(address_base, instruction.imm_i16);
 
-    mmio.store_u8(psx, address, @truncate(value));
+    bus.store_u8(psx, address, @truncate(value));
 }
 
 fn execute_sh(psx: *PSXState, instruction: instructions.sh) void {
@@ -782,7 +788,7 @@ fn execute_sh(psx: *PSXState, instruction: instructions.sh) void {
     const address = wrapping_add_u32_i32(address_base, instruction.imm_i16);
 
     if (address % 2 == 0) {
-        mmio.store_u16(psx, address, @truncate(value));
+        bus.store_u16(psx, address, @truncate(value));
     } else {
         execute_exception_bad_address(psx, .AdES, address);
     }
@@ -795,7 +801,7 @@ fn execute_sw(psx: *PSXState, instruction: instructions.sw) void {
     const address = wrapping_add_u32_i32(address_base, instruction.imm_i16);
 
     if (address % 4 == 0) {
-        mmio.store_u32(psx, address, value);
+        bus.store_u32(psx, address, value);
     } else {
         execute_exception_bad_address(psx, .AdES, address);
     }
@@ -808,7 +814,7 @@ fn execute_swl(psx: *PSXState, instruction: instructions.swl) void {
     const address = wrapping_add_u32_i32(address_base, instruction.imm_i16);
     const address_aligned = address & ~@as(u32, 0b11);
 
-    const previous_value = mmio.load_u32(psx, address_aligned);
+    const previous_value = bus.load_u32(psx, address_aligned);
 
     const result = switch (address % 4) {
         0 => previous_value & 0xff_ff_ff_00 | value >> 24,
@@ -818,7 +824,7 @@ fn execute_swl(psx: *PSXState, instruction: instructions.swl) void {
         else => unreachable,
     };
 
-    mmio.store_u32(psx, address_aligned, result);
+    bus.store_u32(psx, address_aligned, result);
 }
 
 fn execute_swr(psx: *PSXState, instruction: instructions.swr) void {
@@ -828,7 +834,7 @@ fn execute_swr(psx: *PSXState, instruction: instructions.swr) void {
     const address = wrapping_add_u32_i32(address_base, instruction.imm_i16);
     const address_aligned = address & ~@as(u32, 0b11);
 
-    const previous_value = mmio.load_u32(psx, address_aligned);
+    const previous_value = bus.load_u32(psx, address_aligned);
 
     const result = switch (address % 4) {
         0 => previous_value & 0x00_00_00_00 | value << 0,
@@ -838,7 +844,7 @@ fn execute_swr(psx: *PSXState, instruction: instructions.swr) void {
         else => unreachable,
     };
 
-    mmio.store_u32(psx, address_aligned, result);
+    bus.store_u32(psx, address_aligned, result);
 }
 
 fn execute_mfhi(psx: *PSXState, instruction: instructions.mfhi) void {

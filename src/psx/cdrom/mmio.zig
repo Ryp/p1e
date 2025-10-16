@@ -2,7 +2,6 @@ const std = @import("std");
 
 const PSXState = @import("../state.zig").PSXState;
 const config = @import("../config.zig");
-const mmio = @import("../mmio.zig");
 const mmio_gpu = @import("../gpu/mmio.zig");
 
 const execution = @import("execution.zig");

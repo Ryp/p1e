@@ -12,7 +12,7 @@ pub fn load_mmio_generic(comptime T: type, psx: *PSXState, offset: u29) T {
     std.debug.assert(offset >= MMIO.Offset);
     std.debug.assert(offset < MMIO.OffsetEnd);
 
-    const type_slice = mmio.get_mutable_mmio_slice_generic(T, psx, offset);
+    const type_slice = mmio.get_mutable_mmio_slice(T, psx, offset);
 
     switch (offset) {
         MMIO.Joy_DATA_Offset => {
@@ -61,7 +61,7 @@ pub fn store_mmio_generic(comptime T: type, psx: *PSXState, offset: u29, value: 
     std.debug.assert(offset >= MMIO.Offset);
     std.debug.assert(offset < MMIO.OffsetEnd);
 
-    const type_slice = mmio.get_mutable_mmio_slice_generic(T, psx, offset);
+    const type_slice = mmio.get_mutable_mmio_slice(T, psx, offset);
 
     switch (offset) {
         MMIO.Joy_DATA_Offset => {
