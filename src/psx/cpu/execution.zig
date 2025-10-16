@@ -29,8 +29,8 @@ fn step(psx: *PSXState) void {
     if (psx.skip_shell_execution) {
         if (psx.cpu.regs.pc == exe_sideloading.DefaultSideLoadingPC) {
             psx.cpu.regs.pc = load_reg(psx.cpu.regs, .ra);
-            psx.cpu.branch = true;
             psx.cpu.regs.next_pc = psx.cpu.regs.pc + 4;
+            psx.cpu.branch = true;
 
             std.debug.print("Skipping shell execution, jump to 0x{x}\n", .{psx.cpu.regs.pc});
         }
@@ -105,8 +105,6 @@ fn step(psx: *PSXState) void {
 
     psx.cpu.delay_slot = psx.cpu.branch;
     psx.cpu.branch = false;
-
-    execute_delay_load(psx);
 
     if ((psx.cpu.regs.sr.interrupt_stack.current.enabled) and (@as(u3, @bitCast(psx.cpu.regs.cause.interrupt_pending)) & psx.cpu.regs.sr.interrupt_mask) != 0) {
         execute_exception(psx, .INT);
@@ -197,6 +195,14 @@ fn execute_instruction(psx: *PSXState, instruction: instructions.Instruction) vo
     }
 }
 
+fn load_reg(registers: Registers, register_name: cpu.RegisterName) u32 {
+    return load_reg_generic(u32, registers, register_name);
+}
+
+fn load_reg_signed(registers: Registers, register_name: cpu.RegisterName) i32 {
+    return load_reg_generic(i32, registers, register_name);
+}
+
 fn load_reg_generic(load_type: type, registers: Registers, register_name: cpu.RegisterName) load_type {
     const value = switch (register_name) {
         .zero => 0,
@@ -210,12 +216,12 @@ fn load_reg_generic(load_type: type, registers: Registers, register_name: cpu.Re
     return @bitCast(value);
 }
 
-fn load_reg(registers: Registers, register_name: cpu.RegisterName) u32 {
-    return load_reg_generic(u32, registers, register_name);
+fn store_reg(registers: *Registers, register_name: cpu.RegisterName, value: u32) void {
+    store_reg_generic(registers, register_name, value);
 }
 
-fn load_reg_signed(registers: Registers, register_name: cpu.RegisterName) i32 {
-    return load_reg_generic(i32, registers, register_name);
+fn store_reg_signed(registers: *Registers, register_name: cpu.RegisterName, value: i32) void {
+    store_reg_generic(registers, register_name, value);
 }
 
 fn store_reg_generic(registers: *Registers, register_name: cpu.RegisterName, value: anytype) void {
@@ -229,18 +235,12 @@ fn store_reg_generic(registers: *Registers, register_name: cpu.RegisterName, val
     }
 }
 
-fn store_reg(registers: *Registers, register_name: cpu.RegisterName, value: u32) void {
-    store_reg_generic(registers, register_name, value);
-}
-
-fn store_reg_signed(registers: *Registers, register_name: cpu.RegisterName, value: i32) void {
-    store_reg_generic(registers, register_name, value);
-}
-
 fn execute_sll(psx: *PSXState, instruction: instructions.sll) void {
     const value = load_reg(psx.cpu.regs, instruction.rt);
 
     const result = value << instruction.shift_imm;
+
+    execute_delayed_load(psx);
 
     store_reg(&psx.cpu.regs, instruction.rd, result);
 }
@@ -249,6 +249,8 @@ fn execute_srl(psx: *PSXState, instruction: instructions.srl) void {
     const value = load_reg(psx.cpu.regs, instruction.rt);
 
     const result = value >> instruction.shift_imm;
+
+    execute_delayed_load(psx);
 
     store_reg(&psx.cpu.regs, instruction.rd, result);
 }
@@ -259,6 +261,8 @@ fn execute_sra(psx: *PSXState, instruction: instructions.sra) void {
     // Sign-extending
     const result = value >> instruction.shift_imm;
 
+    execute_delayed_load(psx);
+
     store_reg_signed(&psx.cpu.regs, instruction.rd, result);
 }
 
@@ -268,6 +272,8 @@ fn execute_sllv(psx: *PSXState, instruction: instructions.sllv) void {
 
     const result = value << shift;
 
+    execute_delayed_load(psx);
+
     store_reg(&psx.cpu.regs, instruction.rd, result);
 }
 
@@ -276,6 +282,8 @@ fn execute_srlv(psx: *PSXState, instruction: instructions.srlv) void {
     const shift: u5 = @truncate(load_reg(psx.cpu.regs, instruction.rs));
 
     const result = value >> shift;
+
+    execute_delayed_load(psx);
 
     store_reg(&psx.cpu.regs, instruction.rd, result);
 }
@@ -287,19 +295,30 @@ fn execute_srav(psx: *PSXState, instruction: instructions.srav) void {
     // Sign-extending
     const result = value >> shift;
 
+    execute_delayed_load(psx);
+
     store_reg_signed(&psx.cpu.regs, instruction.rd, result);
 }
 
 fn execute_jr(psx: *PSXState, instruction: instructions.jr) void {
-    const address = load_reg(psx.cpu.regs, instruction.rs);
-    execute_generic_jump(psx, address);
+    const jump_address = load_reg(psx.cpu.regs, instruction.rs);
+
+    psx.cpu.regs.next_pc = jump_address;
+    psx.cpu.branch = true;
+
+    execute_delayed_load(psx);
 }
 
 fn execute_jalr(psx: *PSXState, instruction: instructions.jalr) void {
-    store_reg(&psx.cpu.regs, instruction.rd, psx.cpu.regs.next_pc);
+    const jump_address = load_reg(psx.cpu.regs, instruction.rs);
+    const return_address = psx.cpu.regs.next_pc;
 
-    const address = load_reg(psx.cpu.regs, instruction.rs);
-    execute_generic_jump(psx, address);
+    psx.cpu.regs.next_pc = jump_address;
+    psx.cpu.branch = true;
+
+    execute_delayed_load(psx);
+
+    store_reg(&psx.cpu.regs, instruction.rd, return_address);
 }
 
 fn execute_syscall(psx: *PSXState) void {
@@ -318,6 +337,8 @@ fn execute_mult(psx: *PSXState, instruction: instructions.mult) void {
 
     psx.cpu.regs.hi = @truncate(result >> 32);
     psx.cpu.regs.lo = @truncate(result);
+
+    execute_delayed_load(psx);
 }
 
 fn execute_multu(psx: *PSXState, instruction: instructions.multu) void {
@@ -328,6 +349,8 @@ fn execute_multu(psx: *PSXState, instruction: instructions.multu) void {
 
     psx.cpu.regs.hi = @truncate(result >> 32);
     psx.cpu.regs.lo = @truncate(result);
+
+    execute_delayed_load(psx);
 }
 
 fn execute_div(psx: *PSXState, instruction: instructions.div) void {
@@ -347,6 +370,8 @@ fn execute_div(psx: *PSXState, instruction: instructions.div) void {
         psx.cpu.regs.hi = @bitCast(@rem(numerator, divisor));
         psx.cpu.regs.lo = @bitCast(@divTrunc(numerator, divisor));
     }
+
+    execute_delayed_load(psx);
 }
 
 fn execute_divu(psx: *PSXState, instruction: instructions.divu) void {
@@ -361,6 +386,8 @@ fn execute_divu(psx: *PSXState, instruction: instructions.divu) void {
         psx.cpu.regs.hi = @rem(numerator, divisor);
         psx.cpu.regs.lo = @divTrunc(numerator, divisor);
     }
+
+    execute_delayed_load(psx);
 }
 
 fn execute_add(psx: *PSXState, instruction: instructions.add) void {
@@ -368,6 +395,8 @@ fn execute_add(psx: *PSXState, instruction: instructions.add) void {
     const value_t = load_reg_signed(psx.cpu.regs, instruction.rt);
 
     const result, const overflow = @addWithOverflow(value_s, value_t);
+
+    execute_delayed_load(psx);
 
     if (overflow == 1) {
         execute_exception(psx, .Ov);
@@ -382,6 +411,8 @@ fn execute_addu(psx: *PSXState, instruction: instructions.addu) void {
 
     const result = value_s +% value_t;
 
+    execute_delayed_load(psx);
+
     store_reg(&psx.cpu.regs, instruction.rd, result);
 }
 
@@ -390,6 +421,8 @@ fn execute_sub(psx: *PSXState, instruction: instructions.sub) void {
     const value_t = load_reg_signed(psx.cpu.regs, instruction.rt);
 
     const result, const overflow = @subWithOverflow(value_s, value_t);
+
+    execute_delayed_load(psx);
 
     if (overflow == 1) {
         execute_exception(psx, .Ov);
@@ -404,12 +437,16 @@ fn execute_subu(psx: *PSXState, instruction: instructions.subu) void {
 
     const result = value_s -% value_t;
 
+    execute_delayed_load(psx);
+
     store_reg(&psx.cpu.regs, instruction.rd, result);
 }
 
 fn execute_and(psx: *PSXState, instruction: instructions.and_) void {
     const value_s = load_reg(psx.cpu.regs, instruction.rs);
     const value_t = load_reg(psx.cpu.regs, instruction.rt);
+
+    execute_delayed_load(psx);
 
     store_reg(&psx.cpu.regs, instruction.rd, value_s & value_t);
 }
@@ -418,6 +455,8 @@ fn execute_or(psx: *PSXState, instruction: instructions.or_) void {
     const value_s = load_reg(psx.cpu.regs, instruction.rs);
     const value_t = load_reg(psx.cpu.regs, instruction.rt);
 
+    execute_delayed_load(psx);
+
     store_reg(&psx.cpu.regs, instruction.rd, value_s | value_t);
 }
 
@@ -425,12 +464,16 @@ fn execute_xor(psx: *PSXState, instruction: instructions.xor) void {
     const value_s = load_reg(psx.cpu.regs, instruction.rs);
     const value_t = load_reg(psx.cpu.regs, instruction.rt);
 
+    execute_delayed_load(psx);
+
     store_reg(&psx.cpu.regs, instruction.rd, value_s ^ value_t);
 }
 
 fn execute_nor(psx: *PSXState, instruction: instructions.nor) void {
     const value_s = load_reg(psx.cpu.regs, instruction.rs);
     const value_t = load_reg(psx.cpu.regs, instruction.rt);
+
+    execute_delayed_load(psx);
 
     store_reg(&psx.cpu.regs, instruction.rd, ~(value_s | value_t));
 }
@@ -441,6 +484,8 @@ fn execute_slt(psx: *PSXState, instruction: instructions.slt) void {
 
     const result: u32 = if (value_s < value_t) 1 else 0;
 
+    execute_delayed_load(psx);
+
     store_reg(&psx.cpu.regs, instruction.rd, result);
 }
 
@@ -449,6 +494,8 @@ fn execute_sltu(psx: *PSXState, instruction: instructions.sltu) void {
     const value_t = load_reg(psx.cpu.regs, instruction.rt);
 
     const result: u32 = if (value_s < value_t) 1 else 0;
+
+    execute_delayed_load(psx);
 
     store_reg(&psx.cpu.regs, instruction.rd, result);
 }
@@ -461,6 +508,8 @@ fn execute_b_cond_z(psx: *PSXState, instruction: instructions.b_cond_z) void {
     // Flip test if needed
     test_value = test_value != instruction.test_greater;
 
+    execute_delayed_load(psx);
+
     if (instruction.link) {
         store_reg(&psx.cpu.regs, cpu.RegisterName.ra, psx.cpu.regs.next_pc);
     }
@@ -471,15 +520,24 @@ fn execute_b_cond_z(psx: *PSXState, instruction: instructions.b_cond_z) void {
 }
 
 fn execute_j(psx: *PSXState, instruction: instructions.j) void {
-    const address = (psx.cpu.regs.next_pc & 0xf0_00_00_00) | instruction.offset;
-    execute_generic_jump(psx, address);
+    const jump_address = (psx.cpu.regs.next_pc & 0xf0_00_00_00) | instruction.offset;
+
+    psx.cpu.regs.next_pc = jump_address;
+    psx.cpu.branch = true;
+
+    execute_delayed_load(psx);
 }
 
 fn execute_jal(psx: *PSXState, instruction: instructions.jal) void {
-    store_reg(&psx.cpu.regs, cpu.RegisterName.ra, psx.cpu.regs.next_pc);
+    const return_address = psx.cpu.regs.next_pc;
+    const jump_address = (psx.cpu.regs.next_pc & 0xf0_00_00_00) | instruction.offset;
 
-    const address = (psx.cpu.regs.next_pc & 0xf0_00_00_00) | instruction.offset;
-    execute_generic_jump(psx, address);
+    psx.cpu.regs.next_pc = jump_address;
+    psx.cpu.branch = true;
+
+    execute_delayed_load(psx);
+
+    store_reg(&psx.cpu.regs, cpu.RegisterName.ra, return_address);
 }
 
 fn execute_beq(psx: *PSXState, instruction: instructions.beq) void {
@@ -489,6 +547,8 @@ fn execute_beq(psx: *PSXState, instruction: instructions.beq) void {
     if (value_s == value_t) {
         execute_generic_branch(psx, instruction.rel_offset);
     }
+
+    execute_delayed_load(psx);
 }
 
 fn execute_bne(psx: *PSXState, instruction: instructions.bne) void {
@@ -498,6 +558,8 @@ fn execute_bne(psx: *PSXState, instruction: instructions.bne) void {
     if (value_s != value_t) {
         execute_generic_branch(psx, instruction.rel_offset);
     }
+
+    execute_delayed_load(psx);
 }
 
 fn execute_blez(psx: *PSXState, instruction: instructions.blez) void {
@@ -506,6 +568,8 @@ fn execute_blez(psx: *PSXState, instruction: instructions.blez) void {
     if (value_s <= 0) {
         execute_generic_branch(psx, instruction.rel_offset);
     }
+
+    execute_delayed_load(psx);
 }
 
 fn execute_bgtz(psx: *PSXState, instruction: instructions.bgtz) void {
@@ -514,6 +578,8 @@ fn execute_bgtz(psx: *PSXState, instruction: instructions.bgtz) void {
     if (value_s > 0) {
         execute_generic_branch(psx, instruction.rel_offset);
     }
+
+    execute_delayed_load(psx);
 }
 
 fn execute_mfc(psx: *PSXState, instruction: instructions.mtc) void {
@@ -534,7 +600,7 @@ fn execute_mfc(psx: *PSXState, instruction: instructions.mtc) void {
                 _ => unreachable,
             };
 
-            psx.cpu.regs.pending_load = .{ .register = instruction.cpu_rs, .value = @bitCast(value) };
+            execute_chained_delay_load(psx, instruction.cpu_rs, value);
         },
         .cop2 => unreachable, // FIXME
         .cop1 => @panic("mfc1 is not valid"),
@@ -605,6 +671,8 @@ fn execute_addi(psx: *PSXState, instruction: instructions.addi) void {
 
     const result, const overflow = @addWithOverflow(value_s, value_imm);
 
+    execute_delayed_load(psx);
+
     if (overflow == 1) {
         execute_exception(psx, .Ov);
     } else {
@@ -617,6 +685,8 @@ fn execute_addiu(psx: *PSXState, instruction: instructions.addiu) void {
 
     const result = wrapping_add_u32_i32(value_s, instruction.imm_i16);
 
+    execute_delayed_load(psx);
+
     store_reg(&psx.cpu.regs, instruction.rt, result);
 }
 
@@ -624,6 +694,8 @@ fn execute_slti(psx: *PSXState, instruction: instructions.slti) void {
     const value_s = load_reg_signed(psx.cpu.regs, instruction.rs);
 
     const result: u32 = if (value_s < instruction.imm_i16) 1 else 0;
+
+    execute_delayed_load(psx);
 
     store_reg(&psx.cpu.regs, instruction.rt, result);
 }
@@ -634,11 +706,15 @@ fn execute_sltiu(psx: *PSXState, instruction: instructions.sltiu) void {
 
     const result: u32 = if (value_s < imm_se) 1 else 0;
 
+    execute_delayed_load(psx);
+
     store_reg(&psx.cpu.regs, instruction.rt, result);
 }
 
 fn execute_andi(psx: *PSXState, instruction: instructions.andi) void {
     const value = load_reg(psx.cpu.regs, instruction.rs);
+
+    execute_delayed_load(psx);
 
     store_reg(&psx.cpu.regs, instruction.rt, value & instruction.imm_u16);
 }
@@ -646,17 +722,23 @@ fn execute_andi(psx: *PSXState, instruction: instructions.andi) void {
 fn execute_ori(psx: *PSXState, instruction: instructions.ori) void {
     const value = load_reg(psx.cpu.regs, instruction.rs);
 
+    execute_delayed_load(psx);
+
     store_reg(&psx.cpu.regs, instruction.rt, value | instruction.imm_u16);
 }
 
 fn execute_xori(psx: *PSXState, instruction: instructions.xori) void {
     const value = load_reg(psx.cpu.regs, instruction.rs);
 
+    execute_delayed_load(psx);
+
     store_reg(&psx.cpu.regs, instruction.rt, value ^ instruction.imm_u16);
 }
 
 fn execute_lui(psx: *PSXState, instruction: instructions.lui) void {
     const value = @as(u32, instruction.imm_u16) << 16;
+
+    execute_delayed_load(psx);
 
     store_reg(&psx.cpu.regs, instruction.rt, value);
 }
@@ -668,7 +750,7 @@ fn execute_lb(psx: *PSXState, instruction: instructions.lb) void {
     const value: i8 = @bitCast(bus.load_u8(psx, address));
     const value_sign_extended: i32 = value;
 
-    psx.cpu.regs.pending_load = .{ .register = instruction.rt, .value = @bitCast(value_sign_extended) };
+    execute_chained_delay_load(psx, instruction.rt, @bitCast(value_sign_extended));
 }
 
 fn execute_lbu(psx: *PSXState, instruction: instructions.lbu) void {
@@ -677,7 +759,7 @@ fn execute_lbu(psx: *PSXState, instruction: instructions.lbu) void {
 
     const value: u8 = bus.load_u8(psx, address);
 
-    psx.cpu.regs.pending_load = .{ .register = instruction.rt, .value = value };
+    execute_chained_delay_load(psx, instruction.rt, value);
 }
 
 fn execute_lh(psx: *PSXState, instruction: instructions.lh) void {
@@ -688,8 +770,9 @@ fn execute_lh(psx: *PSXState, instruction: instructions.lh) void {
         const value: i16 = @bitCast(bus.load_u16(psx, address));
         const value_sign_extended: i32 = value;
 
-        psx.cpu.regs.pending_load = .{ .register = instruction.rt, .value = @bitCast(value_sign_extended) };
+        execute_chained_delay_load(psx, instruction.rt, @bitCast(value_sign_extended));
     } else {
+        execute_delayed_load(psx);
         execute_exception_bad_address(psx, .AdEL, address);
     }
 }
@@ -701,8 +784,9 @@ fn execute_lhu(psx: *PSXState, instruction: instructions.lhu) void {
     if (address % 2 == 0) {
         const value = bus.load_u16(psx, address);
 
-        psx.cpu.regs.pending_load = .{ .register = instruction.rt, .value = value };
+        execute_chained_delay_load(psx, instruction.rt, value);
     } else {
+        execute_delayed_load(psx);
         execute_exception_bad_address(psx, .AdEL, address);
     }
 }
@@ -714,62 +798,59 @@ fn execute_lw(psx: *PSXState, instruction: instructions.lw) void {
     if (address % 4 == 0) {
         const value = bus.load_u32(psx, address);
 
-        psx.cpu.regs.pending_load = .{ .register = instruction.rt, .value = value };
+        execute_chained_delay_load(psx, instruction.rt, value);
     } else {
+        execute_delayed_load(psx);
         execute_exception_bad_address(psx, .AdEL, address);
     }
 }
 
+const UnalignedType = enum {
+    Left,
+    Right,
+};
+
 fn execute_lwl(psx: *PSXState, instruction: instructions.lwl) void {
-    const address_base = load_reg(psx.cpu.regs, instruction.rs);
-    const address = wrapping_add_u32_i32(address_base, instruction.imm_i16);
-    const address_aligned = address & ~@as(u32, 0b11);
-
-    const load_value = bus.load_u32(psx, address_aligned);
-
-    var rt_ignoring_load_delay = load_reg(psx.cpu.regs, instruction.rt);
-
-    if (psx.cpu.regs.pending_load) |pending_load| {
-        if (pending_load.register == instruction.rt) {
-            rt_ignoring_load_delay = pending_load.value;
-        }
-    }
-
-    const result = switch (address % 4) {
-        0 => rt_ignoring_load_delay & 0x00_ff_ff_ff | load_value << 24,
-        1 => rt_ignoring_load_delay & 0x00_00_ff_ff | load_value << 16,
-        2 => rt_ignoring_load_delay & 0x00_00_00_ff | load_value << 8,
-        3 => rt_ignoring_load_delay & 0x00_00_00_00 | load_value << 0,
-        else => unreachable,
-    };
-
-    psx.cpu.regs.pending_load = .{ .register = instruction.rt, .value = result };
+    execute_lw_unaligned(psx, instruction, .Left);
 }
 
 fn execute_lwr(psx: *PSXState, instruction: instructions.lwr) void {
+    execute_lw_unaligned(psx, instruction, .Right);
+}
+
+fn execute_lw_unaligned(psx: *PSXState, instruction: instructions.lwl, direction: UnalignedType) void {
     const address_base = load_reg(psx.cpu.regs, instruction.rs);
     const address = wrapping_add_u32_i32(address_base, instruction.imm_i16);
     const address_aligned = address & ~@as(u32, 0b11);
 
     const load_value = bus.load_u32(psx, address_aligned);
 
-    var rt_ignoring_load_delay = load_reg(psx.cpu.regs, instruction.rt);
+    var previous_value = load_reg(psx.cpu.regs, instruction.rt);
 
     if (psx.cpu.regs.pending_load) |pending_load| {
         if (pending_load.register == instruction.rt) {
-            rt_ignoring_load_delay = pending_load.value;
+            previous_value = pending_load.value;
         }
     }
 
-    const result = switch (address % 4) {
-        0 => rt_ignoring_load_delay & 0x00_00_00_00 | load_value >> 0,
-        1 => rt_ignoring_load_delay & 0xff_00_00_00 | load_value >> 8,
-        2 => rt_ignoring_load_delay & 0xff_ff_00_00 | load_value >> 16,
-        3 => rt_ignoring_load_delay & 0xff_ff_ff_00 | load_value >> 24,
-        else => unreachable,
+    const result = switch (direction) {
+        .Left => switch (address % 4) {
+            0 => previous_value & 0x00_ff_ff_ff | load_value << 24,
+            1 => previous_value & 0x00_00_ff_ff | load_value << 16,
+            2 => previous_value & 0x00_00_00_ff | load_value << 8,
+            3 => previous_value & 0x00_00_00_00 | load_value << 0,
+            else => unreachable,
+        },
+        .Right => switch (address % 4) {
+            0 => previous_value & 0x00_00_00_00 | load_value >> 0,
+            1 => previous_value & 0xff_00_00_00 | load_value >> 8,
+            2 => previous_value & 0xff_ff_00_00 | load_value >> 16,
+            3 => previous_value & 0xff_ff_ff_00 | load_value >> 24,
+            else => unreachable,
+        },
     };
 
-    psx.cpu.regs.pending_load = .{ .register = instruction.rt, .value = result };
+    execute_chained_delay_load(psx, instruction.rt, result);
 }
 
 fn execute_sb(psx: *PSXState, instruction: instructions.sb) void {
@@ -777,6 +858,8 @@ fn execute_sb(psx: *PSXState, instruction: instructions.sb) void {
 
     const address_base = load_reg(psx.cpu.regs, instruction.rs);
     const address = wrapping_add_u32_i32(address_base, instruction.imm_i16);
+
+    execute_delayed_load(psx);
 
     bus.store_u8(psx, address, @truncate(value));
 }
@@ -786,6 +869,8 @@ fn execute_sh(psx: *PSXState, instruction: instructions.sh) void {
 
     const address_base = load_reg(psx.cpu.regs, instruction.rs);
     const address = wrapping_add_u32_i32(address_base, instruction.imm_i16);
+
+    execute_delayed_load(psx);
 
     if (address % 2 == 0) {
         bus.store_u16(psx, address, @truncate(value));
@@ -800,6 +885,8 @@ fn execute_sw(psx: *PSXState, instruction: instructions.sw) void {
     const address_base = load_reg(psx.cpu.regs, instruction.rs);
     const address = wrapping_add_u32_i32(address_base, instruction.imm_i16);
 
+    execute_delayed_load(psx);
+
     if (address % 4 == 0) {
         bus.store_u32(psx, address, value);
     } else {
@@ -808,26 +895,14 @@ fn execute_sw(psx: *PSXState, instruction: instructions.sw) void {
 }
 
 fn execute_swl(psx: *PSXState, instruction: instructions.swl) void {
-    const value = load_reg(psx.cpu.regs, instruction.rt);
-
-    const address_base = load_reg(psx.cpu.regs, instruction.rs);
-    const address = wrapping_add_u32_i32(address_base, instruction.imm_i16);
-    const address_aligned = address & ~@as(u32, 0b11);
-
-    const previous_value = bus.load_u32(psx, address_aligned);
-
-    const result = switch (address % 4) {
-        0 => previous_value & 0xff_ff_ff_00 | value >> 24,
-        1 => previous_value & 0xff_ff_00_00 | value >> 16,
-        2 => previous_value & 0xff_00_00_00 | value >> 8,
-        3 => previous_value & 0x00_00_00_00 | value >> 0,
-        else => unreachable,
-    };
-
-    bus.store_u32(psx, address_aligned, result);
+    execute_sw_unaligned(psx, instruction, .Left);
 }
 
 fn execute_swr(psx: *PSXState, instruction: instructions.swr) void {
+    execute_sw_unaligned(psx, instruction, .Right);
+}
+
+fn execute_sw_unaligned(psx: *PSXState, instruction: instructions.swl, direction: UnalignedType) void {
     const value = load_reg(psx.cpu.regs, instruction.rt);
 
     const address_base = load_reg(psx.cpu.regs, instruction.rs);
@@ -836,38 +911,61 @@ fn execute_swr(psx: *PSXState, instruction: instructions.swr) void {
 
     const previous_value = bus.load_u32(psx, address_aligned);
 
-    const result = switch (address % 4) {
-        0 => previous_value & 0x00_00_00_00 | value << 0,
-        1 => previous_value & 0x00_00_00_ff | value << 8,
-        2 => previous_value & 0x00_00_ff_ff | value << 16,
-        3 => previous_value & 0x00_ff_ff_ff | value << 24,
-        else => unreachable,
+    const result = switch (direction) {
+        .Left => switch (address % 4) {
+            0 => previous_value & 0xff_ff_ff_00 | value >> 24,
+            1 => previous_value & 0xff_ff_00_00 | value >> 16,
+            2 => previous_value & 0xff_00_00_00 | value >> 8,
+            3 => previous_value & 0x00_00_00_00 | value >> 0,
+            else => unreachable,
+        },
+        .Right => switch (address % 4) {
+            0 => previous_value & 0x00_00_00_00 | value << 0,
+            1 => previous_value & 0x00_00_00_ff | value << 8,
+            2 => previous_value & 0x00_00_ff_ff | value << 16,
+            3 => previous_value & 0x00_ff_ff_ff | value << 24,
+            else => unreachable,
+        },
     };
+
+    execute_delayed_load(psx);
 
     bus.store_u32(psx, address_aligned, result);
 }
 
 fn execute_mfhi(psx: *PSXState, instruction: instructions.mfhi) void {
+    execute_delayed_load(psx);
+
     store_reg(&psx.cpu.regs, instruction.rd, psx.cpu.regs.hi);
 }
 
 fn execute_mthi(psx: *PSXState, instruction: instructions.mthi) void {
     psx.cpu.regs.hi = load_reg(psx.cpu.regs, instruction.rs);
+
+    execute_delayed_load(psx);
 }
 
 fn execute_mflo(psx: *PSXState, instruction: instructions.mflo) void {
+    execute_delayed_load(psx);
+
     store_reg(&psx.cpu.regs, instruction.rd, psx.cpu.regs.lo);
 }
 
 fn execute_mtlo(psx: *PSXState, instruction: instructions.mtlo) void {
     psx.cpu.regs.lo = load_reg(psx.cpu.regs, instruction.rs);
+
+    execute_delayed_load(psx);
 }
 
 fn execute_rfe(psx: *PSXState) void {
+    execute_delayed_load(psx);
+
     execute_interrupt_stack_pop(psx);
 }
 
 fn execute_cop1(psx: *PSXState) void {
+    execute_delayed_load(psx);
+
     execute_exception(psx, .CpU);
 }
 
@@ -877,10 +975,14 @@ fn execute_cop2(psx: *PSXState) void {
 }
 
 fn execute_cop3(psx: *PSXState) void {
+    execute_delayed_load(psx);
+
     execute_exception(psx, .CpU);
 }
 
 fn execute_lwc(psx: *PSXState, instruction: instructions.lwc) void {
+    execute_delayed_load(psx); // FIXME
+
     if (instruction.cop_index == 2) {
         unreachable;
     } else {
@@ -889,6 +991,8 @@ fn execute_lwc(psx: *PSXState, instruction: instructions.lwc) void {
 }
 
 fn execute_swc(psx: *PSXState, instruction: instructions.swc) void {
+    execute_delayed_load(psx); // FIXME
+
     if (instruction.cop_index == 2) {
         unreachable;
     } else {
@@ -897,24 +1001,34 @@ fn execute_swc(psx: *PSXState, instruction: instructions.swc) void {
 }
 
 fn execute_reserved_instruction(psx: *PSXState) void {
+    execute_delayed_load(psx);
+
     execute_exception(psx, .RI);
 }
 
-fn execute_delay_load(psx: *PSXState) void {
+// Most instructions need to execute this BEFORE writing to a register to that they can take precendence.
+// Most instruction also need to execute this AFTER reading to a register to get the correct value.
+// NOTE Currently the later condition is not needed because we double-buffer register values, but maybe we actually shouldn't for perf.
+fn execute_delayed_load(psx: *PSXState) void {
     if (psx.cpu.regs.pending_load) |pending_load| {
         store_reg(&psx.cpu.regs, pending_load.register, pending_load.value);
         psx.cpu.regs.pending_load = null;
     }
 }
 
-fn execute_generic_jump(psx: *PSXState, address: u32) void {
-    psx.cpu.branch = true;
-    psx.cpu.regs.next_pc = address;
+fn execute_chained_delay_load(psx: *PSXState, register_name: cpu.RegisterName, value: u32) void {
+    if (psx.cpu.regs.pending_load) |pending_load| {
+        if (pending_load.register != register_name) {
+            store_reg(&psx.cpu.regs, pending_load.register, pending_load.value);
+        }
+    }
+
+    psx.cpu.regs.pending_load = .{ .register = register_name, .value = value };
 }
 
 fn execute_generic_branch(psx: *PSXState, offset: i32) void {
-    psx.cpu.branch = true;
     psx.cpu.regs.next_pc = wrapping_add_u32_i32(psx.cpu.regs.pc, offset);
+    psx.cpu.branch = true;
 }
 
 pub fn update_hardware_interrupt_line(psx: *PSXState) void {
