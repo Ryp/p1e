@@ -358,6 +358,7 @@ pub const DrawQuadShadedTextured = packed struct {
     zero_v4_b16_31: u16,
 };
 
+// Rect
 pub const DrawRectMonochrome = packed struct(u64) {
     color: PackedRGB8,
     op_code: OpCode,
@@ -365,27 +366,26 @@ pub const DrawRectMonochrome = packed struct(u64) {
 };
 
 pub const DrawRectMonochromeVariable = packed struct(u96) {
-    color: PackedRGB8,
-    op_code: OpCode,
-    position_top_left: PackedVertexPos,
+    base_command: DrawRectMonochrome,
     size: PackedVertexPos,
 };
 
 pub const DrawRectTextured = packed struct(u96) {
-    todo: u24,
+    color: PackedRGB8,
     op_code: OpCode,
-    w1: u32,
-    w2: u32,
+
+    position_top_left: PackedVertexPos,
+
+    position_texcoord: PackedTexCoord,
+    palette: PackedClut,
 };
 
 pub const DrawRectTexturedVariable = packed struct(u128) {
-    todo: u24,
-    op_code: OpCode,
-    w1: u32,
-    w2: u32,
-    w3: u32,
+    base_command: DrawRectTextured,
+    extent: PackedVertexPos,
 };
 
+// Primitives
 pub const PackedVertexPos = packed struct(u32) {
     x: u16,
     y: u16,

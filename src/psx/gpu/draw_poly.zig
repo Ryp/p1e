@@ -13,6 +13,7 @@ const mmio = @import("mmio.zig");
 const pixel_format = @import("pixel_format.zig");
 const PackedRGB8 = pixel_format.PackedRGB8;
 
+// FIXME dedup
 const VRAMTextureWidth = 1024;
 const VRAMTextureHeight = 512;
 const stride_y = VRAMTextureWidth; // FIXME
@@ -152,7 +153,7 @@ fn packed_vertex_to_f32_2(packed_vertex: g0.PackedVertexPos) f32_2 {
     };
 }
 
-fn packed_color_to_f32_3(packed_color: pixel_format.PackedRGB8) f32_3 {
+fn packed_color_to_f32_3(packed_color: PackedRGB8) f32_3 {
     return f32_3{
         @floatFromInt(packed_color.r),
         @floatFromInt(packed_color.g),
@@ -326,7 +327,7 @@ fn draw_poly_triangle(psx: *PSXState, op_code: g0.DrawPolyOpCode, instance: Poly
 }
 
 // FIXME what happens with alpha?
-fn compute_alpha_blending(background: pixel_format.PackedRGB5A1, foreground: pixel_format.PackedRGB5A1, semi_transparency_mode: mmio.MMIO.Packed.SemiTransparency) pixel_format.PackedRGB5A1 {
+pub fn compute_alpha_blending(background: pixel_format.PackedRGB5A1, foreground: pixel_format.PackedRGB5A1, semi_transparency_mode: mmio.MMIO.Packed.SemiTransparency) pixel_format.PackedRGB5A1 {
     return switch (semi_transparency_mode) {
         .B_half_plus_F_half => .{
             .r = (background.r / 2) +| (foreground.r / 2),

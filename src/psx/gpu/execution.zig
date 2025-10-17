@@ -15,6 +15,7 @@ const PackedRGB8 = pixel_format.PackedRGB8;
 const PackedRGB5A1 = pixel_format.PackedRGB5A1;
 
 const draw_poly = @import("draw_poly.zig");
+const draw_rect = @import("draw_rect.zig");
 
 const config = @import("../config.zig");
 const cpu_execution = @import("../cpu/execution.zig");
@@ -180,46 +181,8 @@ fn execute_gp0_command(psx: *PSXState, op_code: g0.OpCode, command_bytes: []cons
         },
         .DrawRect => {
             std.debug.assert(!psx.gpu.backend.pending_draw);
-            const draw_rect = op_code.secondary.draw_rect;
 
-            switch (draw_rect.size) {
-                ._1x1, ._8x8, ._16x16 => |size| {
-                    std.debug.assert(!draw_rect.is_semi_transparent); // FIXME
-
-                    const px_size: u5 = switch (size) {
-                        ._1x1 => 1,
-                        ._8x8 => 8,
-                        ._16x16 => 16,
-                        .Variable => unreachable,
-                    };
-                    _ = px_size;
-
-                    if (draw_rect.is_textured) {
-                        const rect_textured = std.mem.bytesAsValue(g0.DrawRectTextured, command_bytes);
-                        std.debug.print("DrawRectTextured: {any}\n", .{rect_textured});
-                        unreachable;
-                    } else {
-                        const rect_monochrome = std.mem.bytesAsValue(g0.DrawRectMonochrome, command_bytes);
-                        std.debug.print("DrawRectMonochrome: {any} and {any}\n", .{ draw_rect, rect_monochrome });
-
-                        const tl = rect_monochrome.position_top_left;
-                        _ = tl;
-
-                        unreachable;
-                    }
-                },
-                .Variable => {
-                    if (draw_rect.is_textured) {
-                        const rect_monochrome_variable = std.mem.bytesAsValue(g0.DrawRectMonochromeVariable, command_bytes);
-                        std.debug.print("DrawRectMonochromeVariable: {any}\n", .{rect_monochrome_variable});
-                        unreachable;
-                    } else {
-                        const rect_textured_variable = std.mem.bytesAsValue(g0.DrawRectTexturedVariable, command_bytes);
-                        std.debug.print("DrawRectTexturedVariable: {any}\n", .{rect_textured_variable});
-                        unreachable;
-                    }
-                },
-            }
+            draw_rect.execute(psx, op_code.secondary.draw_rect, command_bytes);
 
             return .idle;
         },
