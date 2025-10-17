@@ -34,7 +34,6 @@ pub const Registers = struct {
     pending_load: ?struct {
         register: RegisterName,
         value: u32,
-        is_unaligned: bool = false,
     } = null,
 
     pub fn write(self: @This(), writer: anytype) !void {
@@ -58,12 +57,10 @@ pub const Registers = struct {
             try writer.writeByte(1); // optional
             try writer.writeByte(@intFromEnum(pending_load.register));
             try writer.writeInt(@TypeOf(pending_load.value), pending_load.value, .little);
-            try writer.writeByte(if (pending_load.is_unaligned) 1 else 0);
         } else {
             try writer.writeByte(0); // optional
             try writer.writeByte(0); // register
             try writer.writeInt(u32, 0, .little); // value
-            try writer.writeByte(0); // is_unaligned
         }
     }
 
@@ -87,13 +84,11 @@ pub const Registers = struct {
         const has_pending_load = try reader.readByte() != 0;
         const register: RegisterName = @enumFromInt(try reader.readByte());
         const value = try reader.readInt(u32, .little);
-        const is_unaligned = try reader.readByte() != 0;
 
         self.pending_load = if (has_pending_load)
             .{
                 .register = register,
                 .value = value,
-                .is_unaligned = is_unaligned,
             }
         else
             null;
