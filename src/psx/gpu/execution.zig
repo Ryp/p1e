@@ -8,18 +8,17 @@ const DrawCommand = state.DrawCommand;
 
 const g0 = @import("instructions_g0.zig");
 const g1 = @import("instructions_g1.zig");
-const raster = @import("raster.zig");
+const vram = @import("vram.zig");
 
 const pixel_format = @import("pixel_format.zig");
 const PackedRGB8 = pixel_format.PackedRGB8;
 const PackedRGB5A1 = pixel_format.PackedRGB5A1;
 
 const draw_poly = @import("draw_poly.zig");
+const draw_rect = @import("draw_rect.zig");
 
 const config = @import("../config.zig");
 const cpu_execution = @import("../cpu/execution.zig");
-
-const stride_y = 1024; // FIXME
 
 // FIXME be very careful with endianness here
 pub fn load_gpuread_u32(psx: *PSXState) u32 {
@@ -40,14 +39,12 @@ pub fn load_gpuread_u32(psx: *PSXState) u32 {
             // FIXME handle mask settings
             std.debug.assert(copy_mode.command.op_code.primary == .CopyRectangleVRAMtoCPU);
 
-            const vram_typed = std.mem.bytesAsSlice(PackedRGB5A1, psx.gpu.vram);
             var dst_pixels: [2]PackedRGB5A1 = undefined;
 
             for (&dst_pixels) |*dst_pixel| {
-                const offset_y = (copy_mode.command.position_top_left.y + copy_mode.index_y) * stride_y;
-                const offset_x = copy_mode.command.position_top_left.x + copy_mode.index_x;
+                const texel_offset = vram.flat_texel_offset(copy_mode.command.position_top_left.x + copy_mode.index_x, copy_mode.command.position_top_left.y + copy_mode.index_y);
 
-                dst_pixel.* = vram_typed[offset_y + offset_x];
+                dst_pixel.* = psx.gpu.vram_texels[texel_offset];
 
                 copy_mode.index_x += 1;
 
@@ -106,16 +103,14 @@ pub fn store_gp0_u32(psx: *PSXState, value: u32) void {
             // FIXME handle mask settings
             std.debug.assert(copy_mode.command.op_code.primary == .CopyRectangleCPUtoVRAM);
 
-            const vram_typed = std.mem.bytesAsSlice(PackedRGB5A1, psx.gpu.vram);
             const src_pixels = std.mem.bytesAsSlice(PackedRGB5A1, std.mem.asBytes(&value));
 
             std.debug.assert(src_pixels.len == 2);
 
             for (src_pixels) |src_pixel| {
-                const offset_y = (copy_mode.command.position_top_left.y + copy_mode.index_y) * stride_y;
-                const offset_x = copy_mode.command.position_top_left.x + copy_mode.index_x;
+                const texel_offset = vram.flat_texel_offset(copy_mode.command.position_top_left.x + copy_mode.index_x, copy_mode.command.position_top_left.y + copy_mode.index_y);
 
-                vram_typed[offset_y + offset_x] = src_pixel;
+                psx.gpu.vram_texels[texel_offset] = src_pixel;
 
                 copy_mode.index_x += 1;
 
@@ -143,25 +138,35 @@ fn execute_gp0_command(psx: *PSXState, op_code: g0.OpCode, command_bytes: []cons
     return switch (op_code.primary) {
         .Special => {
             switch (op_code.secondary.special) {
+                .Nop => {
+                    // This command doesn't take up space in the FIFO (eg. even if a VRAM-to-VRAM transfer is still busy, one can send dozens of GP0(00h) commands, without the command FIFO becoming full. So, either the command is ignored (or, if it has a function, it is executed immediately, even while the transfer is busy).
+                    // ...
+                    // GP0(00h) unknown, used with parameter = 08A16Ch... or rather 08FDBCh ... the written value seems to be a bios/ram memory address, anded with 00FFFFFFh... maybe a bios bug?
+                    // GP0(00h) seems to be often inserted between Texpage and Rectangle commands, maybe it acts as a NOP, which may be required between that commands, for timing reasons...?
+                },
                 .ClearCache => {
                     const clear_texture_cache = std.mem.bytesAsValue(g0.ClearTextureCache, command_bytes);
                     std.debug.assert(clear_texture_cache.zero_b0_23 == 0);
 
-                    // unreachable;
-                    // FIXME TO IMPLEMENT
+                    // FIXME Implement
+
+                    if (config.enable_gpu_debug) {
+                        std.debug.print("Clear texture cache command ignored\n", .{});
+                    }
                 },
                 .FillRectangleInVRAM => {
                     const fill_rectangle = std.mem.bytesAsValue(g0.FillRectangleInVRAM, command_bytes).*;
                     fill_rectangle_vram(psx, fill_rectangle);
                 },
                 .Unknown => {
-                    unreachable; // FIXME
+                    @panic("Unknown!");
                 },
                 .InterrupRequest => {
-                    unreachable; // FIXME
+                    @panic("Implement me!");
                 },
                 _ => {
                     // Probably a noop => Do nothing!
+                    @panic("Just in case we're missing something");
                 },
             }
 
@@ -176,50 +181,12 @@ fn execute_gp0_command(psx: *PSXState, op_code: g0.OpCode, command_bytes: []cons
         },
         .DrawLine => {
             std.debug.assert(!psx.gpu.backend.pending_draw);
-            unreachable;
+            @panic("Implement me!");
         },
         .DrawRect => {
             std.debug.assert(!psx.gpu.backend.pending_draw);
-            const draw_rect = op_code.secondary.draw_rect;
 
-            switch (draw_rect.size) {
-                ._1x1, ._8x8, ._16x16 => |size| {
-                    std.debug.assert(!draw_rect.is_semi_transparent); // FIXME
-
-                    const px_size: u5 = switch (size) {
-                        ._1x1 => 1,
-                        ._8x8 => 8,
-                        ._16x16 => 16,
-                        .Variable => unreachable,
-                    };
-                    _ = px_size;
-
-                    if (draw_rect.is_textured) {
-                        const rect_textured = std.mem.bytesAsValue(g0.DrawRectTextured, command_bytes);
-                        std.debug.print("DrawRectTextured: {any}\n", .{rect_textured});
-                        unreachable;
-                    } else {
-                        const rect_monochrome = std.mem.bytesAsValue(g0.DrawRectMonochrome, command_bytes);
-                        std.debug.print("DrawRectMonochrome: {any} and {any}\n", .{ draw_rect, rect_monochrome });
-
-                        const tl = rect_monochrome.position_top_left;
-                        _ = tl;
-
-                        unreachable;
-                    }
-                },
-                .Variable => {
-                    if (draw_rect.is_textured) {
-                        const rect_monochrome_variable = std.mem.bytesAsValue(g0.DrawRectMonochromeVariable, command_bytes);
-                        std.debug.print("DrawRectMonochromeVariable: {any}\n", .{rect_monochrome_variable});
-                        unreachable;
-                    } else {
-                        const rect_textured_variable = std.mem.bytesAsValue(g0.DrawRectTexturedVariable, command_bytes);
-                        std.debug.print("DrawRectTexturedVariable: {any}\n", .{rect_textured_variable});
-                        unreachable;
-                    }
-                },
-            }
+            draw_rect.execute(psx, op_code.secondary.draw_rect, command_bytes);
 
             return .idle;
         },
@@ -319,7 +286,9 @@ fn execute_gp0_command(psx: *PSXState, op_code: g0.OpCode, command_bytes: []cons
 
                     std.debug.assert(mask_bit_setting.zero_b2_23 == 0);
                 },
-                _ => unreachable,
+                _ => {
+                    @panic("Implement me? Is that a command?");
+                },
             }
 
             return .idle;
@@ -387,14 +356,14 @@ pub fn execute_gp1_command(psx: *PSXState, command_raw: g1.CommandRaw) void {
         },
         .GetGPUInfo => |get_gpu_info| {
             switch (get_gpu_info.op_code) {
-                .TextureWindowSetting => unreachable,
-                .DrawAreaTopLeft => unreachable,
-                .DrawAreaBottomRight => unreachable,
-                .DrawOffset => unreachable,
+                .TextureWindowSetting => @panic("Implement me!"),
+                .DrawAreaTopLeft => @panic("Implement me!"),
+                .DrawAreaBottomRight => @panic("Implement me!"),
+                .DrawOffset => @panic("Implement me!"),
                 .GPUType => {
                     psx.gpu.gpuread_mode = .gpu_type;
                 },
-                else => unreachable,
+                else => @panic("Invalid command or just missing?"),
             }
         },
     }
@@ -412,7 +381,7 @@ pub fn consume_pending_draw(psx: *PSXState) void {
 
 fn execute_reset(psx: *PSXState) void {
     psx.gpu = .{
-        .vram = psx.gpu.vram,
+        .vram_texels = psx.gpu.vram_texels,
         .backend = .{
             .vertex_buffer = psx.gpu.backend.vertex_buffer,
             .index_buffer = psx.gpu.backend.index_buffer,
@@ -449,14 +418,12 @@ fn copy_rectangle_vram(psx: *PSXState, copy_rectangle: g0.CopyRectangleInVRAM) v
     //std.debug.assert(fill_rectangle.position_top_left.x % 0x10 == 0);
     //std.debug.assert(fill_rectangle.size.x % 0x10 == 0);
 
-    const vram_typed = std.mem.bytesAsSlice(PackedRGB5A1, psx.gpu.vram);
-
     for (0..copy_rectangle.size.y) |y| {
-        const offset_src_y = (copy_rectangle.position_top_left_src.y + y) * stride_y;
-        const offset_dst_y = (copy_rectangle.position_top_left_dst.y + y) * stride_y;
+        const offset_src_y = (copy_rectangle.position_top_left_src.y + y) * vram.TexelStrideY;
+        const offset_dst_y = (copy_rectangle.position_top_left_dst.y + y) * vram.TexelStrideY;
 
-        const vram_line_src = vram_typed[offset_src_y .. offset_src_y + stride_y];
-        const vram_line_dst = vram_typed[offset_dst_y .. offset_dst_y + stride_y];
+        const vram_line_src = psx.gpu.vram_texels[offset_src_y .. offset_src_y + vram.TexelStrideY];
+        const vram_line_dst = psx.gpu.vram_texels[offset_dst_y .. offset_dst_y + vram.TexelStrideY];
 
         const offset_src_x = copy_rectangle.position_top_left_src.x;
         const offset_dst_x = copy_rectangle.position_top_left_dst.x;
@@ -481,12 +448,10 @@ fn fill_rectangle_vram(psx: *PSXState, fill_rectangle: g0.FillRectangleInVRAM) v
 
     const fill_color_rgb5 = pixel_format.convert_rgb8_to_rgb5a1(fill_rectangle.color, 0);
 
-    const vram_typed = std.mem.bytesAsSlice(PackedRGB5A1, psx.gpu.vram);
-
     for (0..fill_rectangle.size.y) |y| {
-        const offset_y = (fill_rectangle.position_top_left.y + y) * stride_y;
+        const offset_y = (fill_rectangle.position_top_left.y + y) * vram.TexelStrideY;
 
-        const vram_type_line = vram_typed[offset_y .. offset_y + stride_y];
+        const vram_type_line = psx.gpu.vram_texels[offset_y .. offset_y + vram.TexelStrideY];
 
         const offset_x = fill_rectangle.position_top_left.x;
         const vram_type_line_rect = vram_type_line[offset_x .. offset_x + fill_rectangle.size.x];

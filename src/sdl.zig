@@ -9,10 +9,11 @@ const c = @cImport({
 const PSXState = @import("psx/state.zig").PSXState;
 const cpu_execution = @import("psx/cpu/execution.zig");
 const pixel_format = @import("psx/gpu/pixel_format.zig");
+const vram = @import("psx/gpu/vram.zig");
 
 pub fn execute_main_loop(psx: *PSXState, allocator: std.mem.Allocator) !void {
-    const width = 1024;
-    const height = 512;
+    const window_width = vram.TexelWidth;
+    const window_height = vram.TexelHeight;
 
     if (!c.SDL_Init(c.SDL_INIT_VIDEO | c.SDL_INIT_EVENTS)) {
         c.SDL_Log("Unable to initialize SDL: %s", c.SDL_GetError());
@@ -20,7 +21,7 @@ pub fn execute_main_loop(psx: *PSXState, allocator: std.mem.Allocator) !void {
     }
     defer c.SDL_Quit();
 
-    const window = c.SDL_CreateWindow("p1e", @as(c_int, @intCast(width)), @as(c_int, @intCast(height)), 0) orelse {
+    const window = c.SDL_CreateWindow("p1e", window_width, window_height, 0) orelse {
         c.SDL_Log("Unable to create window: %s", c.SDL_GetError());
         return error.SDLInitializationFailed;
     };
@@ -40,7 +41,7 @@ pub fn execute_main_loop(psx: *PSXState, allocator: std.mem.Allocator) !void {
     const title_string = try allocator.alloc(u8, 1024);
     defer allocator.free(title_string);
 
-    const backbuffer = try allocator.alloc(pixel_format.PackedRGBA8, 1024 * 512);
+    const backbuffer = try allocator.alloc(pixel_format.PackedRGBA8, vram.TexelWidth * vram.TexelHeight);
     defer allocator.free(backbuffer);
 
     var shouldExit = false;
@@ -83,15 +84,14 @@ pub fn execute_main_loop(psx: *PSXState, allocator: std.mem.Allocator) !void {
         {
             const tr_present = tracy.traceNamed(@src(), "Fill backbuffer");
             defer tr_present.end();
-            const psx_vram_typed = std.mem.bytesAsSlice(pixel_format.PackedRGB5A1, psx.gpu.vram);
 
-            for (backbuffer, psx_vram_typed) |*out, in| {
+            for (backbuffer, psx.gpu.vram_texels) |*out, in| {
                 out.* = pixel_format.convert_rgb5a1_to_rgba8(in);
                 out.a = 255;
             }
         }
 
-        const texture = c.SDL_CreateTexture(ren, c.SDL_PIXELFORMAT_ABGR8888, c.SDL_TEXTUREACCESS_STATIC, 1024, 512);
+        const texture = c.SDL_CreateTexture(ren, c.SDL_PIXELFORMAT_ABGR8888, c.SDL_TEXTUREACCESS_STATIC, vram.TexelWidth, vram.TexelHeight);
         defer c.SDL_DestroyTexture(texture);
 
         // Match SDL2 behavior

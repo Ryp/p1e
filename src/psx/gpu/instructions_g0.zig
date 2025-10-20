@@ -7,9 +7,10 @@ pub fn get_command_size_bytes(op_code: OpCode) u32 {
     switch (op_code.primary) {
         .Special => {
             switch (op_code.secondary.special) {
+                .Nop => return 4,
                 .FillRectangleInVRAM => return 3 * 4,
                 .ClearCache, .InterrupRequest, .Unknown => return 4,
-                _ => return 4,
+                _ => @panic("Unimplemented special opcode"),
             }
         },
         .DrawPoly => {
@@ -102,6 +103,7 @@ const PrimaryOpCode = enum(u3) {
 };
 
 const SpecialOpCode = enum(u5) {
+    Nop = 0b00000, // 00h
     ClearCache = 0b00001, // 01h = 0000 0001b GP0(01h) - Clear Cache
     FillRectangleInVRAM = 0b00010, // 02h = 0000 0010b GP0(02h) - Fill Rectangle in VRAM
     Unknown = 0b00011, // 03h = 0000 0011b GP0(03h) - Unknown?
@@ -358,6 +360,7 @@ pub const DrawQuadShadedTextured = packed struct {
     zero_v4_b16_31: u16,
 };
 
+// Rect
 pub const DrawRectMonochrome = packed struct(u64) {
     color: PackedRGB8,
     op_code: OpCode,
@@ -365,27 +368,26 @@ pub const DrawRectMonochrome = packed struct(u64) {
 };
 
 pub const DrawRectMonochromeVariable = packed struct(u96) {
-    color: PackedRGB8,
-    op_code: OpCode,
-    position_top_left: PackedVertexPos,
-    size: PackedVertexPos,
+    base_command: DrawRectMonochrome,
+    extent: PackedVertexPos,
 };
 
 pub const DrawRectTextured = packed struct(u96) {
-    todo: u24,
+    color: PackedRGB8,
     op_code: OpCode,
-    w1: u32,
-    w2: u32,
+
+    position_top_left: PackedVertexPos,
+
+    position_texcoord: PackedTexCoord,
+    palette: PackedClut,
 };
 
 pub const DrawRectTexturedVariable = packed struct(u128) {
-    todo: u24,
-    op_code: OpCode,
-    w1: u32,
-    w2: u32,
-    w3: u32,
+    base_command: DrawRectTextured,
+    extent: PackedVertexPos,
 };
 
+// Primitives
 pub const PackedVertexPos = packed struct(u32) {
     x: u16,
     y: u16,

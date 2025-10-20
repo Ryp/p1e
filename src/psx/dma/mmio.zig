@@ -64,6 +64,7 @@ pub fn store_mmio_generic(comptime T: type, psx: *PSXState, offset: u29, value: 
                     .Reserved => unreachable,
                 };
 
+                // This still happens on a regular shell boot.
                 if (channel.channel_control.sync_mode == .Manual and channel.channel_control.start_or_trigger == 0) {
                     unreachable;
                 }

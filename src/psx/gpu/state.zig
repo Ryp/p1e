@@ -1,9 +1,11 @@
 const std = @import("std");
 
 const g0 = @import("instructions_g0.zig");
+const pixel_format = @import("pixel_format.zig");
+const vram = @import("vram.zig");
 
 pub const GPUState = struct {
-    vram: []u8,
+    vram_texels: []pixel_format.PackedRGB5A1,
 
     regs: packed struct { // FIXME packed because it's simple to serialize
         // NOTE:window settings are converted to u8 when set
@@ -53,7 +55,7 @@ pub const GPUState = struct {
 
     // FIXME
     pub fn write(self: @This(), writer: anytype) !void {
-        try writer.writeAll(self.vram);
+        try writer.writeAll(std.mem.sliceAsBytes(self.vram_texels));
         try writer.writeStruct(self.regs);
 
         switch (self.gp0_write_mode) {
@@ -78,8 +80,9 @@ pub const GPUState = struct {
 
     // FIXME
     pub fn read(self: *@This(), reader: anytype) !void {
-        const vram_bytes_written = try reader.readAll(self.vram);
-        if (vram_bytes_written != self.vram.len) {
+        const vram_bytes = std.mem.sliceAsBytes(self.vram_texels);
+        const vram_bytes_written = try reader.readAll(vram_bytes);
+        if (vram_bytes_written != vram_bytes.len) {
             return error.InvalidVRAMSize;
         }
 
@@ -119,8 +122,8 @@ pub const GPUState = struct {
 };
 
 pub fn create_gpu_state(allocator: std.mem.Allocator) !GPUState {
-    const vram = try allocator.alloc(u8, VRAM_SizeBytes);
-    errdefer allocator.free(vram);
+    const vram_texels = try allocator.alloc(pixel_format.PackedRGB5A1, vram.TexelWidth * vram.TexelHeight);
+    errdefer allocator.free(vram_texels);
 
     const vertex_buffer = try allocator.alloc(PhatVertex, 1_000_000); // FIXME
     errdefer allocator.free(vertex_buffer);
@@ -132,7 +135,7 @@ pub fn create_gpu_state(allocator: std.mem.Allocator) !GPUState {
     errdefer allocator.free(draw_command_buffer);
 
     return GPUState{
-        .vram = vram,
+        .vram_texels = vram_texels,
         .backend = .{
             .vertex_buffer = vertex_buffer,
             .index_buffer = index_buffer,
@@ -142,7 +145,7 @@ pub fn create_gpu_state(allocator: std.mem.Allocator) !GPUState {
 }
 
 pub fn destroy_gpu_state(state: *GPUState, allocator: std.mem.Allocator) void {
-    allocator.free(state.vram);
+    allocator.free(state.vram_texels);
     allocator.free(state.backend.vertex_buffer);
     allocator.free(state.backend.index_buffer);
     allocator.free(state.backend.draw_command_buffer);
@@ -186,7 +189,6 @@ pub const DrawCommand = struct {
 //    320*224 pix = 11800h pix = 8C00h words
 //   GP0(80h) VramToVram           works                   Freeze on large moves?
 pub const GPUType = 0x00_00_00_02;
-const VRAM_SizeBytes = 1024 * 1024; // 1 MiB
 
 pub const GP0WriteMode = union(enum) {
     idle,

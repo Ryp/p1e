@@ -10,12 +10,9 @@ const f32_3 = state.f32_3;
 const g0 = @import("instructions_g0.zig");
 const mmio = @import("mmio.zig");
 
+const vram = @import("vram.zig");
 const pixel_format = @import("pixel_format.zig");
 const PackedRGB8 = pixel_format.PackedRGB8;
-
-const VRAMTextureWidth = 1024;
-const VRAMTextureHeight = 512;
-const stride_y = VRAMTextureWidth; // FIXME
 
 const PhatPackedVertex = struct {
     position: g0.PackedVertexPos,
@@ -152,7 +149,7 @@ fn packed_vertex_to_f32_2(packed_vertex: g0.PackedVertexPos) f32_2 {
     };
 }
 
-fn packed_color_to_f32_3(packed_color: pixel_format.PackedRGB8) f32_3 {
+fn packed_color_to_f32_3(packed_color: PackedRGB8) f32_3 {
     return f32_3{
         @floatFromInt(packed_color.r),
         @floatFromInt(packed_color.g),
@@ -239,8 +236,6 @@ fn draw_poly_triangle(psx: *PSXState, op_code: g0.DrawPolyOpCode, instance: Poly
         },
     };
 
-    const vram_typed = std.mem.bytesAsSlice(pixel_format.PackedRGB5A1, psx.gpu.vram);
-
     for (triangle_aabb_u32.min[1]..triangle_aabb_u32.max[1]) |y| {
         for (triangle_aabb_u32.min[0]..triangle_aabb_u32.max[0]) |x| {
             const pos: f32_2 = .{
@@ -262,7 +257,7 @@ fn draw_poly_triangle(psx: *PSXState, op_code: g0.DrawPolyOpCode, instance: Poly
 
             if (det_v12 >= 0.0 and det_v23 >= 0.0 and det_v31 >= 0.0) {
                 var output: pixel_format.PackedRGB5A1 = undefined;
-                const vram_output_offset = y * stride_y + x;
+                const vram_output_offset = vram.flat_texel_offset(x, y);
 
                 if (op_code.is_textured) {
                     // FIXME
@@ -283,24 +278,25 @@ fn draw_poly_triangle(psx: *PSXState, op_code: g0.DrawPolyOpCode, instance: Poly
                     switch (instance.tex_page.texture_page_colors) {
                         ._4bits => {
                             std.debug.assert(instance.clut.zero == 0);
+
+                            const index_texel_offset = vram.flat_texel_offset(page_x_offset + tx / 4, page_y_offset + ty);
+                            const index_chunk: u16 = @bitCast(psx.gpu.vram_texels[index_texel_offset]);
+                            const index: u4 = @truncate(index_chunk >> @intCast((tx % 4) * 4));
+
                             const clut_x = @as(u32, instance.clut.x) * 16;
                             const clut_y = @as(u32, instance.clut.y);
+                            const clut_offset = vram.flat_texel_offset(clut_x, clut_y);
+                            const clut_slice = psx.gpu.vram_texels[clut_offset..][0..16];
 
-                            const clut_slice = vram_typed[clut_y * stride_y + clut_x ..][0..16];
-
-                            const clut_chunk: u16 = @bitCast(vram_typed[page_x_offset + tx / 4 + (page_y_offset + ty) * stride_y]);
-                            const clut_index: u4 = @truncate(clut_chunk >> @intCast((tx % 4) * 4));
-
-                            output = clut_slice[clut_index];
+                            output = clut_slice[index];
                         },
                         ._8bits => {
                             @panic("8Bits Not implemented");
                         },
                         ._15bits => {
-                            tx = (tx + page_x_offset);
-                            ty = (ty + page_y_offset);
+                            const texel_offset = vram.flat_texel_offset(page_x_offset + tx, page_y_offset + ty);
 
-                            output = vram_typed[tx + ty * stride_y];
+                            output = psx.gpu.vram_texels[texel_offset];
                         },
                         .Reserved => @panic("Invalid texture page color mode"),
                     }
@@ -311,14 +307,14 @@ fn draw_poly_triangle(psx: *PSXState, op_code: g0.DrawPolyOpCode, instance: Poly
                 if (output == pixel_format.PackedRGB5A1{ .r = 0, .g = 0, .b = 0, .a = 0 }) {
                     continue;
                 } else if (op_code.is_semi_transparent and output.a == 1) {
-                    const background = vram_typed[vram_output_offset];
+                    const background = psx.gpu.vram_texels[vram_output_offset];
 
                     // FIXME if not textured, do we get semi_transparency_mode from GPUSTAT?
                     std.debug.assert(op_code.is_textured);
 
-                    vram_typed[vram_output_offset] = compute_alpha_blending(background, output, instance.tex_page.semi_transparency_mode);
+                    psx.gpu.vram_texels[vram_output_offset] = compute_alpha_blending(background, output, instance.tex_page.semi_transparency_mode);
                 } else {
-                    vram_typed[vram_output_offset] = output;
+                    psx.gpu.vram_texels[vram_output_offset] = output;
                 }
             }
         }
@@ -326,7 +322,7 @@ fn draw_poly_triangle(psx: *PSXState, op_code: g0.DrawPolyOpCode, instance: Poly
 }
 
 // FIXME what happens with alpha?
-fn compute_alpha_blending(background: pixel_format.PackedRGB5A1, foreground: pixel_format.PackedRGB5A1, semi_transparency_mode: mmio.MMIO.Packed.SemiTransparency) pixel_format.PackedRGB5A1 {
+pub fn compute_alpha_blending(background: pixel_format.PackedRGB5A1, foreground: pixel_format.PackedRGB5A1, semi_transparency_mode: mmio.MMIO.Packed.SemiTransparency) pixel_format.PackedRGB5A1 {
     return switch (semi_transparency_mode) {
         .B_half_plus_F_half => .{
             .r = (background.r / 2) +| (foreground.r / 2),

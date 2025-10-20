@@ -92,3 +92,11 @@ pub fn destroy_state(psx: *PSXState, allocator: std.mem.Allocator) void {
 
     allocator.free(psx.ram);
 }
+
+test "Create and destroy" {
+    const allocator = std.heap.page_allocator;
+    const bios = std.mem.zeroes([bus.BIOS_SizeBytes]u8);
+
+    var psx = try create_state(bios, allocator);
+    defer destroy_state(&psx, allocator);
+}
