@@ -22,11 +22,7 @@ pub fn load_mmio_u32(psx: *PSXState, offset: u29) u32 {
                 .VRAMtoCPU => psx.mmio.gpu.GPUSTAT.ready_to_send_vram_to_cpu,
             };
 
-            // FIXME Force vertical res to 240 lines to continue BIOS execution without proper sync support.
-            var stat_value = psx.mmio.gpu.GPUSTAT;
-            stat_value.vertical_resolution = ._240lines; // FIXME
-            const stat_u32: u32 = @bitCast(stat_value);
-            return stat_u32;
+            return @bitCast(psx.mmio.gpu.GPUSTAT);
         },
         else => unreachable,
     }

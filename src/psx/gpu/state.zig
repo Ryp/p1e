@@ -38,7 +38,7 @@ pub const GPUState = struct {
     gp0_write_mode: GP0WriteMode = .idle,
     gpuread_mode: GPUReadMode = .idle, // FIXME not saved ATM
 
-    pending_vblank_ticks: u32 = 0, // FIXME not saved ATM
+    pending_vblank_ticks: u32 = 0,
 
     // FIXME not saved ATM
     backend: struct {
@@ -78,6 +78,8 @@ pub const GPUState = struct {
                 try writer.writeInt(@TypeOf(state.index_y), state.index_y, .little);
             },
         }
+
+        try writer.writeInt(@TypeOf(self.pending_vblank_ticks), self.pending_vblank_ticks, .little);
     }
 
     // FIXME
@@ -120,6 +122,8 @@ pub const GPUState = struct {
             },
             else => return error.InvalidGP0WriteMode,
         }
+
+        self.pending_vblank_ticks = try reader.readInt(@TypeOf(self.pending_vblank_ticks), .little);
     }
 };
 

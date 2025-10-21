@@ -21,17 +21,31 @@ const config = @import("../config.zig");
 const cpu_execution = @import("../cpu/execution.zig");
 const timings = @import("../timings.zig");
 
+// FIXME Assumes ticks is never bigger than the vblank interval
 pub fn execute_ticks(psx: *PSXState, ticks: u32) void {
-    // FIXME do we care about rounding leftovers?
-    psx.gpu.pending_vblank_ticks -|= ticks;
-
-    if (psx.gpu.pending_vblank_ticks == 0) {
-        psx.gpu.pending_vblank_ticks = switch (psx.mmio.gpu.GPUSTAT.video_mode) {
+    if (psx.gpu.pending_vblank_ticks > ticks) {
+        psx.gpu.pending_vblank_ticks -= ticks;
+    } else {
+        psx.gpu.pending_vblank_ticks += @as(u32, switch (psx.mmio.gpu.GPUSTAT.video_mode) {
             .NTSC => timings.VBlankTicksNTSC,
             .PAL => timings.VBlankTicksPAL,
-        };
+        }) - ticks;
 
         cpu_execution.request_hardware_interrupt(psx, .IRQ0_VBlank);
+
+        if (psx.mmio.gpu.GPUSTAT.vertical_interlace) {
+            switch (psx.mmio.gpu.GPUSTAT.vertical_resolution) {
+                ._240lines => {
+                    // FIXME handle field switching properly
+                    psx.mmio.gpu.GPUSTAT.drawing_even_odd_line_in_interlace_mode = 0;
+                },
+                ._480lines => {
+                    psx.mmio.gpu.GPUSTAT.drawing_even_odd_line_in_interlace_mode ^= 1;
+                },
+            }
+        } else {
+            psx.mmio.gpu.GPUSTAT.drawing_even_odd_line_in_interlace_mode = 0;
+        }
 
         // FIXME reset frame data!
         if (!psx.headless) {
@@ -369,6 +383,8 @@ pub fn execute_gp1_command(psx: *PSXState, command_raw: g1.CommandRaw) void {
             psx.mmio.gpu.GPUSTAT.vertical_interlace = display_mode.vertical_interlace;
             psx.mmio.gpu.GPUSTAT.horizontal_resolution2 = display_mode.horizontal_resolution2;
             psx.mmio.gpu.GPUSTAT.reverse_flag = display_mode.reverse_flag;
+
+            std.debug.assert(psx.mmio.gpu.GPUSTAT.display_area_color_depth == ._15bits);
 
             std.debug.assert(display_mode.reverse_flag == 0);
             std.debug.assert(display_mode.zero_b8_23 == 0);

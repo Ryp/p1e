@@ -39,6 +39,10 @@ pub fn store_mmio_generic(comptime T: type, psx: *PSXState, offset: u29, value: 
         MMIO.Mask_Offset => {
             psx.mmio.irq.mask.raw = @truncate(value);
 
+            std.debug.assert(psx.mmio.irq.mask.typed.irq4_tmr0 == 0);
+            std.debug.assert(psx.mmio.irq.mask.typed.irq5_tmr1 == 0);
+            std.debug.assert(psx.mmio.irq.mask.typed.irq6_tmr2 == 0);
+
             cpu_execution.update_hardware_interrupt_line(psx);
         },
         else => @panic("Invalid IRQ MMIO store offset"),
