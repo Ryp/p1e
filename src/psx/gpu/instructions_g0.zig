@@ -9,7 +9,7 @@ pub fn get_command_size_bytes(op_code: OpCode) u32 {
             switch (op_code.secondary.special) {
                 .Nop => return 4,
                 .FillRectangleInVRAM => return 3 * 4,
-                .ClearCache, .InterrupRequest, .Unknown => return 4,
+                .ClearCache, .InterruptRequest, .Unknown => return 4,
                 _ => @panic("Unimplemented special opcode"),
             }
         },
@@ -107,7 +107,7 @@ const SpecialOpCode = enum(u5) {
     ClearCache = 0b00001, // 01h = 0000 0001b GP0(01h) - Clear Cache
     FillRectangleInVRAM = 0b00010, // 02h = 0000 0010b GP0(02h) - Fill Rectangle in VRAM
     Unknown = 0b00011, // 03h = 0000 0011b GP0(03h) - Unknown?
-    InterrupRequest = 0b11111, // 1Fh = 0001 1111b GP0(1Fh) - Interrupt Request (IRQ1)
+    InterruptRequest = 0b11111, // 1Fh = 0001 1111b GP0(1Fh) - Interrupt Request (IRQ1)
     _, // Probably nop!
 };
 

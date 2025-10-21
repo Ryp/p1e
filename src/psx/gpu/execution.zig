@@ -161,8 +161,12 @@ fn execute_gp0_command(psx: *PSXState, op_code: g0.OpCode, command_bytes: []cons
                 .Unknown => {
                     @panic("Unknown!");
                 },
-                .InterrupRequest => {
-                    @panic("Implement me!");
+                .InterruptRequest => {
+                    psx.mmio.gpu.GPUSTAT.interrupt_request = 1;
+
+                    cpu_execution.request_hardware_interrupt(psx, .IRQ1_GPU);
+
+                    @panic("Test that!");
                 },
                 _ => {
                     // Probably a noop => Do nothing!
@@ -314,7 +318,10 @@ pub fn execute_gp1_command(psx: *PSXState, command_raw: g1.CommandRaw) void {
         },
         .AcknowledgeInterrupt => |acknowledge_interrupt| {
             std.debug.assert(acknowledge_interrupt.zero_b0_23 == 0);
-            // FIXME
+
+            psx.mmio.gpu.GPUSTAT.interrupt_request = 0;
+
+            @panic("Test that!");
         },
         .SetDisplayEnabled => |display_enabled| {
             psx.mmio.gpu.GPUSTAT.display_enabled = display_enabled.display_enabled;
