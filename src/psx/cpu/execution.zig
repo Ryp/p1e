@@ -8,6 +8,7 @@ const Registers = cpu.Registers;
 
 const bus = @import("../bus.zig");
 const cdrom = @import("../cdrom/execution.zig");
+const gpu = @import("../gpu/execution.zig");
 const gte = @import("../gte/execution.zig");
 const exe_sideloading = @import("../exe_sideloading.zig");
 const save_state = @import("../save_state.zig");
@@ -16,11 +17,17 @@ const instructions = @import("instructions.zig");
 const debug = @import("debug.zig");
 
 pub fn step_1k_times(psx: *PSXState) void {
-    for (0..1000) |_| {
+    const steps = 1000;
+
+    for (0..steps) |_| {
         step(psx);
     }
 
-    cdrom.execute_ticks(psx, 1000);
+    // FIXME super rough but good enough to get the shell working without missing IRQ messages.
+    const ticks = steps * 2;
+
+    cdrom.execute_ticks(psx, ticks);
+    gpu.execute_ticks(psx, ticks);
 }
 
 fn step(psx: *PSXState) void {

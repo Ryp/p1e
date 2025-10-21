@@ -38,6 +38,8 @@ pub const GPUState = struct {
     gp0_write_mode: GP0WriteMode = .idle,
     gpuread_mode: GPUReadMode = .idle, // FIXME not saved ATM
 
+    pending_vblank_ticks: u32 = 0, // FIXME not saved ATM
+
     // FIXME not saved ATM
     backend: struct {
         pending_draw: bool = false, // Signals that the frame is ready to be drawn

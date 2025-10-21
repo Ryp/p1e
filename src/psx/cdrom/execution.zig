@@ -4,6 +4,7 @@ const PSXState = @import("../state.zig").PSXState;
 
 const config = @import("../config.zig");
 const cpu_execution = @import("../cpu/execution.zig");
+const timings = @import("../timings.zig");
 
 const mmio = @import("mmio.zig");
 const image = @import("image.zig");
@@ -334,9 +335,7 @@ const SeekLDurationTicks = 5000;
 const PauseDurationTicks = 5000;
 
 fn get_readn_ticks(psx: *PSXState) u32 {
-    const ClockTicksPerSeconds = @import("../cpu/state.zig").ClockTicksPerSeconds;
-
-    return ClockTicksPerSeconds / (image.FramesPerSeconds * psx.cdrom.read_speed_multiplier);
+    return timings.TicksPerSeconds / (image.FramesPerSeconds * psx.cdrom.read_speed_multiplier);
 }
 
 // See GetAckDelayForCommand in duckstation

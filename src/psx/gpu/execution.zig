@@ -19,6 +19,26 @@ const draw_rect = @import("draw_rect.zig");
 
 const config = @import("../config.zig");
 const cpu_execution = @import("../cpu/execution.zig");
+const timings = @import("../timings.zig");
+
+pub fn execute_ticks(psx: *PSXState, ticks: u32) void {
+    // FIXME do we care about rounding leftovers?
+    psx.gpu.pending_vblank_ticks -|= ticks;
+
+    if (psx.gpu.pending_vblank_ticks == 0) {
+        psx.gpu.pending_vblank_ticks = switch (psx.mmio.gpu.GPUSTAT.video_mode) {
+            .NTSC => timings.VBlankTicksNTSC,
+            .PAL => timings.VBlankTicksPAL,
+        };
+
+        cpu_execution.request_hardware_interrupt(psx, .IRQ0_VBlank);
+
+        // FIXME reset frame data!
+        if (!psx.headless) {
+            psx.gpu.backend.pending_draw = true;
+        }
+    }
+}
 
 // FIXME be very careful with endianness here
 pub fn load_gpuread_u32(psx: *PSXState) u32 {
@@ -273,14 +293,6 @@ fn execute_gp0_command(psx: *PSXState, op_code: g0.OpCode, command_bytes: []cons
                     psx.gpu.regs.drawing_y_offset = drawing_offset.y;
 
                     std.debug.assert(drawing_offset.zero_b22_23 == 0);
-
-                    // FIXME reset frame data!
-                    if (!psx.headless) {
-                        psx.gpu.backend.pending_draw = true;
-                    }
-
-                    // FIXME Horrible hack
-                    cpu_execution.request_hardware_interrupt(psx, .IRQ0_VBlank);
                 },
                 .SetMaskBitSetting => {
                     const mask_bit_setting = std.mem.bytesAsValue(g0.SetMaskBitSetting, command_bytes);
