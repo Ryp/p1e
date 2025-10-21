@@ -19,8 +19,8 @@ pub const GPUState = struct {
 
         drawing_area_left: u10 = 0,
         drawing_area_top: u10 = 0,
-        drawing_area_right: u10 = 0,
-        drawing_area_bottom: u10 = 0,
+        drawing_area_right: u10 = 0, // Inclusive
+        drawing_area_bottom: u10 = 0, // Inclusive
 
         drawing_x_offset: i11 = 0,
         drawing_y_offset: i11 = 0,
@@ -194,7 +194,7 @@ pub const DrawCommand = struct {
 //   dma-to-vram: MAYBE also needs extra software-handshake to confirm DMA done?
 //    320*224 pix = 11800h pix = 8C00h words
 //   GP0(80h) VramToVram           works                   Freeze on large moves?
-pub const GPUType = 0x00_00_00_02;
+pub const GPUType = 0x00_00_00_02; // New!
 
 pub const GP0WriteMode = union(enum) {
     idle,

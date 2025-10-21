@@ -162,11 +162,11 @@ fn store_generic(comptime T: type, psx: *PSXState, address: Address, value: T) v
     std.debug.assert(type_bits % 8 == 0);
 
     if (config.enable_debug_print) {
-        std.debug.print("store addr: 0x{x:0>8}\n", .{@as(u32, @bitCast(address))});
+        std.debug.print("store addr: 0x{x:0>8} with ", .{@as(u32, @bitCast(address))});
 
         // {{ and }} are escaped curly brackets
         const type_format_string = std.fmt.comptimePrint("0x{{x:0>{}}}", .{type_bytes * 2});
-        std.debug.print("store value: " ++ type_format_string ++ "\n", .{value});
+        std.debug.print("value: " ++ type_format_string ++ "\n", .{value});
     }
 
     if (psx.cpu.regs.sr.isolate_cache == 1) {
