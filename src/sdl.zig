@@ -41,8 +41,19 @@ pub fn execute_main_loop(psx: *PSXState, allocator: std.mem.Allocator) !void {
     const title_string = try allocator.alloc(u8, 1024);
     defer allocator.free(title_string);
 
-    const backbuffer = try allocator.alloc(pixel_format.PackedRGBA8, vram.TexelWidth * vram.TexelHeight);
-    defer allocator.free(backbuffer);
+    const present_buffer_x = vram.TexelWidth;
+    const present_buffer_y = vram.TexelHeight;
+    const present_buffer_format = pixel_format.PackedRGBA8;
+    const present_buffer_stride = present_buffer_x * @sizeOf(present_buffer_format);
+    const present_buffer = try allocator.alloc(present_buffer_format, present_buffer_x * present_buffer_y);
+    defer allocator.free(present_buffer);
+
+    const present_texture_format = c.SDL_PIXELFORMAT_ABGR8888;
+    const present_texture = c.SDL_CreateTexture(ren, present_texture_format, c.SDL_TEXTUREACCESS_STATIC, present_buffer_x, present_buffer_y);
+    defer c.SDL_DestroyTexture(present_texture);
+
+    // Match SDL2 behavior
+    _ = c.SDL_SetTextureScaleMode(present_texture, c.SDL_SCALEMODE_NEAREST);
 
     var shouldExit = false;
 
@@ -78,31 +89,20 @@ pub fn execute_main_loop(psx: *PSXState, allocator: std.mem.Allocator) !void {
         _ = std.fmt.bufPrintZ(title_string, "p1e | frame time {d:.1} ms", .{frame_delta_secs * 1000.0}) catch unreachable;
         _ = c.SDL_SetWindowTitle(window, title_string.ptr);
 
-        _ = c.SDL_SetRenderDrawColor(ren, 0, 0, 0, c.SDL_ALPHA_OPAQUE);
-        _ = c.SDL_RenderClear(ren);
-
+        // Draw frame
         {
             const tr_present = tracy.traceNamed(@src(), "Fill backbuffer");
             defer tr_present.end();
 
-            for (backbuffer, psx.gpu.vram_texels) |*out, in| {
+            for (present_buffer, psx.gpu.vram_texels) |*out, in| {
                 out.* = pixel_format.convert_rgb5a1_to_rgba8(in);
                 out.a = 255;
             }
         }
 
-        const texture = c.SDL_CreateTexture(ren, c.SDL_PIXELFORMAT_ABGR8888, c.SDL_TEXTUREACCESS_STATIC, vram.TexelWidth, vram.TexelHeight);
-        defer c.SDL_DestroyTexture(texture);
+        _ = c.SDL_UpdateTexture(present_texture, null, @ptrCast(present_buffer.ptr), present_buffer_stride);
 
-        // Match SDL2 behavior
-        _ = c.SDL_SetTextureScaleMode(texture, c.SDL_SCALEMODE_NEAREST);
-
-        _ = c.SDL_UpdateTexture(texture, null, @ptrCast(backbuffer.ptr), 1024 * @sizeOf(u32));
-
-        _ = c.SDL_RenderTexture(ren, texture, null, null);
-
-        // const present_scope = tracy.traceNamed(@src(), "SDL Wait for present");
-        // defer present_scope.end();
+        _ = c.SDL_RenderTexture(ren, present_texture, null, null);
 
         {
             const tr_present = tracy.traceNamed(@src(), "Present");
