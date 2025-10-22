@@ -4,12 +4,14 @@ const PSXState = @import("../state.zig").PSXState;
 const config = @import("../config.zig");
 
 const g0 = @import("instructions_g0.zig");
-const mmio = @import("mmio.zig");
 const vram = @import("vram.zig");
 
 const pixel_format = @import("pixel_format.zig");
 const PackedRGB8 = pixel_format.PackedRGB8;
 const PackedRGB5A1 = pixel_format.PackedRGB5A1;
+
+const u32_2 = @Vector(2, u32);
+const i32_2 = @Vector(2, i32);
 
 pub fn execute(psx: *PSXState, draw_rect: g0.DrawRectOpCode, command_bytes: []const u8) void {
     if (config.enable_gpu_debug) {
@@ -50,10 +52,23 @@ pub fn execute(psx: *PSXState, draw_rect: g0.DrawRectOpCode, command_bytes: []co
 fn draw_rectangle_textured(psx: *PSXState, offset: g0.PackedVertexPos, size: g0.PackedVertexPos, color: PackedRGB8, offset_texcoord: g0.PackedTexCoord, palette: g0.PackedClut, is_semi_transparent: bool) void {
     _ = color; // FIXME
 
-    for (0..size.y) |local_y| {
-        for (0..size.x) |local_x| {
-            const x = local_x + offset.x;
-            const y = local_y + offset.y;
+    // Get offsets into VRAM
+    const top_left = i32_2{ offset.x, offset.y } + i32_2{ psx.gpu.regs.drawing_x_offset, psx.gpu.regs.drawing_y_offset };
+    const bottom_right = top_left + i32_2{ size.x, size.y };
+
+    // Clip to drawing area
+    const clipped_top_left: u32_2 = @intCast(@max(top_left, i32_2{
+        @intCast(psx.gpu.regs.drawing_area_left),
+        @intCast(psx.gpu.regs.drawing_area_top),
+    }));
+    const clipped_bottom_right: u32_2 = @intCast(@min(bottom_right, i32_2{
+        @intCast(psx.gpu.regs.drawing_area_right),
+        @intCast(psx.gpu.regs.drawing_area_bottom),
+    }));
+
+    for (clipped_top_left[1]..clipped_bottom_right[1]) |y| {
+        for (clipped_top_left[0]..clipped_bottom_right[0]) |x| {
+            const texcoords = i32_2{ @intCast(x), @intCast(y) } - top_left;
 
             var output: pixel_format.PackedRGB5A1 = undefined;
             const vram_output_offset = vram.flat_texel_offset(x, y);
@@ -62,8 +77,8 @@ fn draw_rectangle_textured(psx: *PSXState, offset: g0.PackedVertexPos, size: g0.
             const page_x_offset = @as(u32, psx.mmio.gpu.GPUSTAT.texture_x_base) * 64;
             const page_y_offset = @as(u32, psx.mmio.gpu.GPUSTAT.texture_y_base) * 256;
 
-            var tx: u32 = (@as(u32, @intCast(local_x)) + offset_texcoord.x) % 256;
-            var ty: u32 = (@as(u32, @intCast(local_y)) + offset_texcoord.y) % 256;
+            var tx: u32 = (@as(u32, @intCast(texcoords[0])) + offset_texcoord.x) % 256;
+            var ty: u32 = (@as(u32, @intCast(texcoords[1])) + offset_texcoord.y) % 256;
 
             std.debug.assert(tx < 256);
             std.debug.assert(ty < 256);

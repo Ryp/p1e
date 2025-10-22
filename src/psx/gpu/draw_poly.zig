@@ -201,12 +201,12 @@ pub fn push_poly_color(psx: *PSXState, op_code: g0.DrawPolyOpCode, vertices: []c
 }
 
 // FIXME overlap of quads along the diagonal, maybe we're not correctly excluding pixels on the edge
+// FIXME handle draw offset and clipping
 fn draw_poly_triangle(psx: *PSXState, op_code: g0.DrawPolyOpCode, instance: PolyInstance, v: [3]PhatVertex) void {
     const v1 = v[0];
     var v2 = v[1];
     var v3 = v[2];
 
-    // FIXME
     var det_v123 = det2(v2.pos - v1.pos, v3.pos - v1.pos);
 
     if (det_v123 < 0.0) {

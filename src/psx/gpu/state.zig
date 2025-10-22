@@ -17,10 +17,10 @@ pub const GPUState = struct {
         rectangle_texture_x_flip: u1 = 0,
         rectangle_texture_y_flip: u1 = 0,
 
-        drawing_area_left: u10 = 0,
-        drawing_area_top: u10 = 0,
-        drawing_area_right: u10 = 0, // Inclusive
-        drawing_area_bottom: u10 = 0, // Inclusive
+        drawing_area_left: u32 = 0,
+        drawing_area_top: u32 = 0,
+        drawing_area_right: u32 = 0, // Exclusive
+        drawing_area_bottom: u32 = 0, // Exclusive
 
         drawing_x_offset: i11 = 0,
         drawing_y_offset: i11 = 0,
