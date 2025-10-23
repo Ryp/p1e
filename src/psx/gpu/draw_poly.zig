@@ -291,14 +291,24 @@ fn draw_poly_triangle(psx: *PSXState, op_code: g0.DrawPolyOpCode, instance: Poly
                             output = clut_slice[index];
                         },
                         ._8bits => {
-                            @panic("8Bits Not implemented");
+                            std.debug.assert(instance.clut.zero == 0);
+
+                            const index_texel_offset = vram.flat_texel_offset(page_x_offset + tx / 2, page_y_offset + ty);
+                            const index_chunk: u16 = @bitCast(psx.gpu.vram_texels[index_texel_offset]);
+                            const index: u8 = @truncate(index_chunk >> @intCast((tx % 2) * 8));
+
+                            const clut_x = @as(u32, instance.clut.x) * 16;
+                            const clut_y = @as(u32, instance.clut.y);
+                            const clut_offset = vram.flat_texel_offset(clut_x, clut_y);
+                            const clut_slice = psx.gpu.vram_texels[clut_offset..][0..256];
+
+                            output = clut_slice[index];
                         },
-                        ._15bits => {
+                        ._15bits, .Reserved_15bits => {
                             const texel_offset = vram.flat_texel_offset(page_x_offset + tx, page_y_offset + ty);
 
                             output = psx.gpu.vram_texels[texel_offset];
                         },
-                        .Reserved => @panic("Invalid texture page color mode"),
                     }
                 } else {
                     output = pixel_format.convert_rgb_f32_to_rgb5a1(color, 0);

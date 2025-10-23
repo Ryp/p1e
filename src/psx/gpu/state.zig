@@ -37,6 +37,7 @@ pub const GPUState = struct {
 
     gp0_write_mode: GP0WriteMode = .idle,
     gpuread_mode: GPUReadMode = .idle, // FIXME not saved ATM
+    gpuread_last_value: u32 = 0, // FIXME not saved ATM
 
     pending_vblank_ticks: u32 = 0,
 
@@ -211,7 +212,7 @@ pub const GP0WriteMode = union(enum) {
 
 pub const GPUReadMode = union(enum) {
     idle,
-    gpu_type,
+    gpu_attributes,
     copy_rect_vram_to_cpu: CopyMode,
 };
 

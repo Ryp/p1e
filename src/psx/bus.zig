@@ -16,15 +16,15 @@ const config = @import("config.zig");
 const mmio = @import("mmio.zig");
 
 pub fn load_u8(psx: *PSXState, address: u32) u8 {
-    return load_generic(u8, psx, @bitCast(address));
+    return load_generic_with_debug(u8, psx, @bitCast(address));
 }
 
 pub fn load_u16(psx: *PSXState, address: u32) u16 {
-    return load_generic(u16, psx, @bitCast(address));
+    return load_generic_with_debug(u16, psx, @bitCast(address));
 }
 
 pub fn load_u32(psx: *PSXState, address: u32) u32 {
-    return load_generic(u32, psx, @bitCast(address));
+    return load_generic_with_debug(u32, psx, @bitCast(address));
 }
 
 pub fn store_u8(psx: *PSXState, address: u32, value: u8) void {
@@ -49,6 +49,16 @@ pub const Address = packed struct {
     },
 };
 
+fn load_generic_with_debug(comptime T: type, psx: *PSXState, address: Address) T {
+    const value = load_generic(T, psx, address);
+
+    if (config.enable_debug_print) {
+         std.debug.print("load u8: 0x{x:0>8} with value 0x{x}\n", .{address.offset, value});
+    }
+
+    return value;
+}
+
 // FIXME does cache isolation has any impact here?
 fn load_generic(comptime T: type, psx: *PSXState, address: Address) T {
     const type_info = @typeInfo(T);
@@ -57,10 +67,6 @@ fn load_generic(comptime T: type, psx: *PSXState, address: Address) T {
 
     std.debug.assert(type_info.int.signedness == .unsigned);
     std.debug.assert(type_bits % 8 == 0);
-
-    if (config.enable_debug_print) {
-        std.debug.print("load addr: 0x{x:0>8}\n", .{@as(u32, @bitCast(address))});
-    }
 
     std.debug.assert(address.offset % type_bytes == 0);
 
@@ -161,13 +167,13 @@ fn store_generic(comptime T: type, psx: *PSXState, address: Address, value: T) v
     std.debug.assert(type_info.int.signedness == .unsigned);
     std.debug.assert(type_bits % 8 == 0);
 
-    if (config.enable_debug_print) {
-        std.debug.print("store addr: 0x{x:0>8} with ", .{@as(u32, @bitCast(address))});
+    // if (config.enable_debug_print) {
+    //     std.debug.print("store addr: 0x{x:0>8} with ", .{@as(u32, @bitCast(address))});
 
-        // {{ and }} are escaped curly brackets
-        const type_format_string = std.fmt.comptimePrint("0x{{x:0>{}}}", .{type_bytes * 2});
-        std.debug.print("value: " ++ type_format_string ++ "\n", .{value});
-    }
+    //     // {{ and }} are escaped curly brackets
+    //     const type_format_string = std.fmt.comptimePrint("0x{{x:0>{}}}", .{type_bytes * 2});
+    //     std.debug.print("value: " ++ type_format_string ++ "\n", .{value});
+    // }
 
     if (psx.cpu.regs.sr.isolate_cache == 1) {
         if (config.enable_debug_print) {

@@ -105,12 +105,11 @@ fn draw_rectangle_textured(psx: *PSXState, offset: g0.PackedVertexPos, size: g0.
                 ._8bits => {
                     @panic("8Bits Not implemented");
                 },
-                ._15bits => {
+                ._15bits, .Reserved_15bits => {
                     const texel_offset = vram.flat_texel_offset(page_x_offset + tx, page_y_offset + ty);
 
                     output = psx.gpu.vram_texels[texel_offset];
                 },
-                .Reserved => @panic("Invalid texture page color mode"),
             }
 
             if (output == pixel_format.PackedRGB5A1{ .r = 0, .g = 0, .b = 0, .a = 0 }) {

@@ -26,6 +26,7 @@ pub fn step_1k_times(psx: *PSXState) void {
     // FIXME super rough but good enough to get the shell working without missing IRQ messages.
     const ticks = steps * 2;
 
+    // FIXME Just fold that in CPU execution?
     cdrom.execute_ticks(psx, ticks);
     gpu.execute_ticks(psx, ticks);
 }
@@ -213,9 +214,9 @@ fn load_reg_generic(load_type: type, registers: Registers, register_name: cpu.Re
         else => registers.gprs[@intFromEnum(register_name)],
     };
 
-    if (config.enable_debug_print) {
-        std.debug.print("reg load 0x{x:0>8} from {}\n", .{ value, register_name });
-    }
+    // if (config.enable_debug_print) {
+    //     std.debug.print("reg load 0x{x:0>8} from {}\n", .{ value, register_name });
+    // }
 
     return @bitCast(value);
 }
@@ -229,9 +230,9 @@ fn store_reg_signed(registers: *Registers, register_name: cpu.RegisterName, valu
 }
 
 fn store_reg_generic(registers: *Registers, register_name: cpu.RegisterName, value: anytype) void {
-    if (config.enable_debug_print) {
-        std.debug.print("reg store 0x{x:0>8} in {}\n", .{ value, register_name });
-    }
+    // if (config.enable_debug_print) {
+    //     std.debug.print("reg store 0x{x:0>8} in {}\n", .{ value, register_name });
+    // }
 
     switch (register_name) {
         .zero => {},
@@ -1069,7 +1070,7 @@ fn execute_exception_bad_address(psx: *PSXState, cause: cpu.ExceptionCause, addr
 }
 
 fn execute_exception(psx: *PSXState, cause: cpu.ExceptionCause) void {
-    if (config.enable_debug_print) {
+    if (true) {
         std.debug.print("Exception: {}\n", .{cause});
     }
 

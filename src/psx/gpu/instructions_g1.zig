@@ -14,6 +14,16 @@ pub const OpCode = enum(u8) {
     _,
 };
 
+pub const GPUInfoOpCode = enum(u4) {
+    TextureWindowSetting = 2, //02h = Read Texture Window setting  ;GP0(E2h) ;20bit/MSBs=Nothing
+    DrawAreaTopLeft = 3, //     03h = Read Draw area top left      ;GP0(E3h) ;20bit/MSBs=Nothing
+    DrawAreaBottomRight = 4, // 04h = Read Draw area bottom right  ;GP0(E4h) ;20bit/MSBs=Nothing
+    DrawOffset = 5, //          05h = Read Draw offset             ;GP0(E5h) ;22bit
+    GPUType = 7, //         07h = Read GPU Type (usually 2)    ;see "GPU Versions" chapter
+    Unknown = 8, //                 08h = Unknown (Returns 00000000h) (lightgun on some GPUs?)
+    _, // Rest is nop!
+};
+
 pub const CommandRaw = packed struct {
     payload: u24,
     op_code: OpCode,
@@ -62,15 +72,7 @@ const Command = union(OpCode) {
         zero_b8_23: u16,
     },
     GetGPUInfo: packed struct(u24) {
-        op_code: enum(u4) {
-            TextureWindowSetting = 2, //02h = Read Texture Window setting  ;GP0(E2h) ;20bit/MSBs=Nothing
-            DrawAreaTopLeft = 3, //     03h = Read Draw area top left      ;GP0(E3h) ;20bit/MSBs=Nothing
-            DrawAreaBottomRight = 4, // 04h = Read Draw area bottom right  ;GP0(E4h) ;20bit/MSBs=Nothing
-            DrawOffset = 5, //          05h = Read Draw offset             ;GP0(E5h) ;22bit
-            GPUType = 7, //         07h = Read GPU Type (usually 2)    ;see "GPU Versions" chapter
-            Unknown = 8, //                 08h = Unknown (Returns 00000000h) (lightgun on some GPUs?)
-            _,
-        },
+        op_code: GPUInfoOpCode,
         unused_b4_23: u20,
     },
 };

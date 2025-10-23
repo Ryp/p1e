@@ -18,12 +18,18 @@ pub fn load_mmio_generic(comptime T: type, psx: *PSXState, offset: u29) T {
         MMIO.Joy_DATA_Offset => {
             std.debug.assert(T == u8); // Games can peak at next values but our FIFO is 1 item deep
 
-            if (psx.ports.joy.rx_fifo) |value| {
-                psx.ports.joy.rx_fifo = null;
-                return value;
-            } else {
-                return 0xff;
+            std.debug.assert(psx.mmio.ports.joy.ctrl.selected_slot == .Joy1); // FIXME
+            // std.debug.assert(psx.mmio.ports.joy.ctrl.tx_enable); // FIXME handle queuing
+
+            const value = if (psx.ports.joy.rx_fifo) |fifo_value| fifo_value else 0xff;
+
+            psx.ports.joy.rx_fifo = null;
+
+            if (config.enable_ports_debug) {
+                std.debug.print("IOPorts DATA RECV: 0x{x}\n", .{value});
             }
+
+            return value;
         },
         MMIO.Joy_STAT_Offset => {
             psx.mmio.ports.joy.stat = .{
@@ -43,10 +49,14 @@ pub fn load_mmio_generic(comptime T: type, psx: *PSXState, offset: u29) T {
             return std.mem.readInt(T, type_slice, .little);
         },
         MMIO.Joy_MODE_Offset => {
-            unreachable;
+            @panic("Implement");
         },
         MMIO.Joy_CTRL_Offset => {
             std.debug.assert(T == u16);
+
+            if (config.enable_ports_debug) {
+                std.debug.print("JOY_CTRL: {}\n", .{psx.mmio.ports.joy.ctrl});
+            }
 
             return std.mem.readInt(T, type_slice, .little);
         },
@@ -67,8 +77,20 @@ pub fn store_mmio_generic(comptime T: type, psx: *PSXState, offset: u29, value: 
         MMIO.Joy_DATA_Offset => {
             std.debug.assert(T == u8);
 
-            // FIXME dummy response
-            psx.ports.joy.rx_fifo = 0xff;
+            if (config.enable_ports_debug) {
+                std.debug.print("IOPorts DATA SEND: 0x{x}\n", .{value});
+            }
+
+            std.debug.assert(psx.mmio.ports.joy.ctrl.selected_slot == .Joy1); // FIXME
+
+            const response = psx.ports.controller.send_byte(@truncate(value));
+
+            psx.ports.joy.rx_fifo = response;
+
+            // FIXME Means we have more to read
+            if (psx.ports.controller.graph != .Idle) {
+                psx.ports.pending_irq7_ticks = 100;
+            }
         },
         MMIO.Joy_STAT_Offset => {
             @panic("Invalid write to Joy_STAT_Offset");
