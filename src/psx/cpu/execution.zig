@@ -37,7 +37,7 @@ fn step(psx: *PSXState) void {
         if (psx.cpu.regs.pc == exe_sideloading.DefaultSideLoadingPC) {
             psx.cpu.regs.pc = load_reg(psx.cpu.regs, .ra);
             psx.cpu.regs.next_pc = psx.cpu.regs.pc + 4;
-            psx.cpu.branch = true;
+            psx.cpu.next_branch_delay_slot = .BranchTaken;
 
             std.debug.print("Skipping shell execution, jump to 0x{x}\n", .{psx.cpu.regs.pc});
         }
@@ -97,27 +97,28 @@ fn step(psx: *PSXState) void {
     }
 
     psx.cpu.regs.current_instruction_pc = psx.cpu.regs.pc;
-
-    if (psx.cpu.regs.pc % 4 != 0) {
-        execute_exception_bad_address(psx, .AdEL, psx.cpu.regs.pc);
-        return;
-    }
-
-    const op_code = bus.load_u32(psx, psx.cpu.regs.pc);
-
-    const instruction = instructions.decode_instruction(op_code);
-
     psx.cpu.regs.pc = psx.cpu.regs.next_pc;
     psx.cpu.regs.next_pc +%= 4;
 
-    psx.cpu.delay_slot = psx.cpu.branch;
-    psx.cpu.branch = false;
+    psx.cpu.branch_delay_slot = psx.cpu.next_branch_delay_slot;
+    psx.cpu.next_branch_delay_slot = .Inactive;
+
+    if (psx.cpu.regs.current_instruction_pc % 4 != 0) {
+        execute_exception_bad_address(psx, .AdEL, psx.cpu.regs.current_instruction_pc);
+        return;
+    }
+
+    const op_code = bus.load_u32(psx, psx.cpu.regs.current_instruction_pc);
+
+    const instruction = instructions.decode_instruction(op_code);
 
     if ((psx.cpu.regs.sr.interrupt_stack.current.enabled) and (@as(u3, @bitCast(psx.cpu.regs.cause.interrupt_pending)) & psx.cpu.regs.sr.interrupt_mask) != 0) {
+        execute_delayed_load(psx);
+
         execute_exception(psx, .INT);
     } else {
         if (config.enable_debug_print) {
-            debug.print_instruction_with_pc_decorations(instruction, psx.cpu.regs.current_instruction_pc);
+            debug.print_instruction_with_pc_decorations(instruction, op_code, psx.cpu.regs.current_instruction_pc);
         }
 
         execute_instruction(psx, instruction);
@@ -307,8 +308,7 @@ fn execute_srav(psx: *PSXState, instruction: instructions.srav) void {
 fn execute_jr(psx: *PSXState, instruction: instructions.jr) void {
     const jump_address = load_reg(psx.cpu.regs, instruction.rs);
 
-    psx.cpu.regs.next_pc = jump_address;
-    psx.cpu.branch = true;
+    execute_branch(psx, jump_address, true);
 
     execute_delayed_load(psx);
 }
@@ -317,8 +317,7 @@ fn execute_jalr(psx: *PSXState, instruction: instructions.jalr) void {
     const jump_address = load_reg(psx.cpu.regs, instruction.rs);
     const return_address = psx.cpu.regs.next_pc;
 
-    psx.cpu.regs.next_pc = jump_address;
-    psx.cpu.branch = true;
+    execute_branch(psx, jump_address, true);
 
     execute_delayed_load(psx);
 
@@ -506,6 +505,7 @@ fn execute_sltu(psx: *PSXState, instruction: instructions.sltu) void {
 
 fn execute_b_cond_z(psx: *PSXState, instruction: instructions.b_cond_z) void {
     const value_s = load_reg_signed(psx.cpu.regs, instruction.rs);
+    const branch_address = wrapping_add_u32_i32(psx.cpu.regs.pc, instruction.rel_offset);
 
     var test_value = value_s < 0;
 
@@ -518,16 +518,13 @@ fn execute_b_cond_z(psx: *PSXState, instruction: instructions.b_cond_z) void {
         store_reg(&psx.cpu.regs, cpu.RegisterName.ra, psx.cpu.regs.next_pc);
     }
 
-    if (test_value) {
-        execute_generic_branch(psx, instruction.rel_offset);
-    }
+    execute_branch(psx, branch_address, test_value);
 }
 
 fn execute_j(psx: *PSXState, instruction: instructions.j) void {
     const jump_address = (psx.cpu.regs.next_pc & 0xf0_00_00_00) | instruction.offset;
 
-    psx.cpu.regs.next_pc = jump_address;
-    psx.cpu.branch = true;
+    execute_branch(psx, jump_address, true);
 
     execute_delayed_load(psx);
 }
@@ -536,8 +533,7 @@ fn execute_jal(psx: *PSXState, instruction: instructions.jal) void {
     const return_address = psx.cpu.regs.next_pc;
     const jump_address = (psx.cpu.regs.next_pc & 0xf0_00_00_00) | instruction.offset;
 
-    psx.cpu.regs.next_pc = jump_address;
-    psx.cpu.branch = true;
+    execute_branch(psx, jump_address, true);
 
     execute_delayed_load(psx);
 
@@ -547,10 +543,9 @@ fn execute_jal(psx: *PSXState, instruction: instructions.jal) void {
 fn execute_beq(psx: *PSXState, instruction: instructions.beq) void {
     const value_s = load_reg(psx.cpu.regs, instruction.rs);
     const value_t = load_reg(psx.cpu.regs, instruction.rt);
+    const branch_address = wrapping_add_u32_i32(psx.cpu.regs.pc, instruction.rel_offset);
 
-    if (value_s == value_t) {
-        execute_generic_branch(psx, instruction.rel_offset);
-    }
+    execute_branch(psx, branch_address, value_s == value_t);
 
     execute_delayed_load(psx);
 }
@@ -558,30 +553,27 @@ fn execute_beq(psx: *PSXState, instruction: instructions.beq) void {
 fn execute_bne(psx: *PSXState, instruction: instructions.bne) void {
     const value_s = load_reg(psx.cpu.regs, instruction.rs);
     const value_t = load_reg(psx.cpu.regs, instruction.rt);
+    const branch_address = wrapping_add_u32_i32(psx.cpu.regs.pc, instruction.rel_offset);
 
-    if (value_s != value_t) {
-        execute_generic_branch(psx, instruction.rel_offset);
-    }
+    execute_branch(psx, branch_address, value_s != value_t);
 
     execute_delayed_load(psx);
 }
 
 fn execute_blez(psx: *PSXState, instruction: instructions.blez) void {
     const value_s = load_reg_signed(psx.cpu.regs, instruction.rs);
+    const branch_address = wrapping_add_u32_i32(psx.cpu.regs.pc, instruction.rel_offset);
 
-    if (value_s <= 0) {
-        execute_generic_branch(psx, instruction.rel_offset);
-    }
+    execute_branch(psx, branch_address, value_s <= 0);
 
     execute_delayed_load(psx);
 }
 
 fn execute_bgtz(psx: *PSXState, instruction: instructions.bgtz) void {
     const value_s = load_reg_signed(psx.cpu.regs, instruction.rs);
+    const branch_address = wrapping_add_u32_i32(psx.cpu.regs.pc, instruction.rel_offset);
 
-    if (value_s > 0) {
-        execute_generic_branch(psx, instruction.rel_offset);
-    }
+    execute_branch(psx, branch_address, value_s > 0);
 
     execute_delayed_load(psx);
 }
@@ -590,23 +582,26 @@ fn execute_mfc(psx: *PSXState, instruction: instructions.mtc) void {
     switch (instruction.target) {
         .cop0 => |cop0_target| {
             const value: u32 = switch (cop0_target) {
-                .BPC, .BDA, .BDAM, .BPCM => {
-                    std.debug.print("mfc0 target read ignored: {}\n", .{instruction.target});
-                    unreachable; // FIXME These are not implemented yet
-                },
-                .DCIC => 0, // FIXME
-                .JUMPDEST => 0, // FIXME
+                .BPC => psx.cpu.regs.bpc,
+                .BDA => psx.cpu.regs.bda,
+                .DCIC => @bitCast(psx.cpu.regs.dcic),
+                .TAR => psx.cpu.regs.tar,
+                .BDAM => psx.cpu.regs.bdam,
+                .BPCM => psx.cpu.regs.bpcm,
                 .BadVaddr => psx.cpu.regs.bad_vaddr,
                 .SR => @bitCast(psx.cpu.regs.sr),
                 .CAUSE => @bitCast(psx.cpu.regs.cause),
                 .EPC => psx.cpu.regs.epc,
                 .PRID => cpu.CPU_PRID,
-                _ => unreachable,
+                _ => {
+                    std.debug.print("Invalid mfc0 target: {}\n", .{cop0_target});
+                    @panic("Invalid mfc0 target");
+                },
             };
 
             execute_chained_delay_load(psx, instruction.cpu_rs, value);
         },
-        .cop2 => unreachable, // FIXME
+        .cop2 => @panic("mfc2 not implemented"),
         .cop1 => @panic("mfc1 is not valid"),
         .cop3 => @panic("mfc3 is not valid"),
     }
@@ -615,7 +610,8 @@ fn execute_mfc(psx: *PSXState, instruction: instructions.mtc) void {
 fn execute_cfc(psx: *PSXState, instruction: instructions.cfc) void {
     _ = psx;
     _ = instruction;
-    unreachable;
+
+    @panic("cfc not implemented");
 }
 
 fn execute_mtc(psx: *PSXState, instruction: instructions.mtc) void {
@@ -624,12 +620,16 @@ fn execute_mtc(psx: *PSXState, instruction: instructions.mtc) void {
     switch (instruction.target) {
         .cop0 => |cop0_target| {
             switch (cop0_target) {
-                .BPC, .BDA, .JUMPDEST, .DCIC, .BadVaddr, .BDAM, .BPCM, .PRID => {
-                    if (config.enable_debug_print) {
-                        std.debug.print("FIXME mtc0 target write ignored\n", .{});
-                    }
+                .BPC => psx.cpu.regs.bpc = value,
+                .BDA => psx.cpu.regs.bda = value,
+                .TAR => {}, // Do nothing as this is read-only
+                .DCIC => psx.cpu.regs.dcic = @bitCast(value),
+                .BadVaddr => @panic("mtc0 to BadVaddr is not allowed"),
+                .BDAM => psx.cpu.regs.bdam = value,
+                .BPCM => psx.cpu.regs.bpcm = value,
+                .SR => {
+                    psx.cpu.regs.sr = @bitCast(value);
                 },
-                .SR => psx.cpu.regs.sr = @bitCast(value),
                 .CAUSE => {
                     const cause_new: @TypeOf(psx.cpu.regs.cause) = @bitCast(value);
 
@@ -637,14 +637,15 @@ fn execute_mtc(psx: *PSXState, instruction: instructions.mtc) void {
                     psx.cpu.regs.cause.interrupt_pending.software_irq0 = cause_new.interrupt_pending.software_irq0;
                     psx.cpu.regs.cause.interrupt_pending.software_irq1 = cause_new.interrupt_pending.software_irq1;
                 },
-                .EPC => unreachable,
+                .EPC => @panic("mtc0 to EPC is not allowed"),
+                .PRID => @panic("mtc0 to PRID is not allowed"),
                 _ => {
-                    std.debug.print("mtc0 target: {}\n", .{instruction.target});
-                    unreachable;
+                    std.debug.print("Invalid mfc0 target: {}\n", .{cop0_target});
+                    @panic("Invalid mfc0 target");
                 },
             }
         },
-        .cop2 => unreachable, // FIXME
+        .cop2 => @panic("mtc2 not implemented"),
         .cop1 => @panic("mtc1 is not valid"),
         .cop3 => @panic("mtc3 is not valid"),
     }
@@ -654,10 +655,10 @@ fn execute_ctc(psx: *PSXState, instruction: instructions.ctc) void {
     const value = load_reg(psx.cpu.regs, instruction.cpu_rs);
 
     switch (instruction.target) {
-        .cop0 => unreachable, // FIXME
+        .cop0 => @panic("ctc0 not implemented"),
         .cop2 => |register_index| {
             gte.execute_ctc(psx, register_index, value);
-        }, // FIXME
+        },
         .cop1 => @panic("ctc1 is not valid"),
         .cop3 => @panic("ctc3 is not valid"),
     }
@@ -666,7 +667,8 @@ fn execute_ctc(psx: *PSXState, instruction: instructions.ctc) void {
 fn execute_bcn(psx: *PSXState, instruction: instructions.bcn) void {
     _ = psx;
     _ = instruction;
-    unreachable;
+
+    @panic("bcn not implemented");
 }
 
 fn execute_addi(psx: *PSXState, instruction: instructions.addi) void {
@@ -831,7 +833,7 @@ fn execute_lw_unaligned(psx: *PSXState, instruction: instructions.lwl, direction
 
     var previous_value = load_reg(psx.cpu.regs, instruction.rt);
 
-    if (psx.cpu.regs.pending_load) |pending_load| {
+    if (psx.cpu.pending_load) |pending_load| {
         if (pending_load.register == instruction.rt) {
             previous_value = pending_load.value;
         }
@@ -975,7 +977,8 @@ fn execute_cop1(psx: *PSXState) void {
 
 fn execute_cop2(psx: *PSXState) void {
     _ = psx;
-    unreachable;
+
+    @panic("cop2 not implemented");
 }
 
 fn execute_cop3(psx: *PSXState) void {
@@ -988,7 +991,7 @@ fn execute_lwc(psx: *PSXState, instruction: instructions.lwc) void {
     execute_delayed_load(psx); // FIXME
 
     if (instruction.cop_index == 2) {
-        unreachable;
+        @panic("lwc2 not implemented");
     } else {
         execute_exception(psx, .CpU);
     }
@@ -998,7 +1001,7 @@ fn execute_swc(psx: *PSXState, instruction: instructions.swc) void {
     execute_delayed_load(psx); // FIXME
 
     if (instruction.cop_index == 2) {
-        unreachable;
+        @panic("swc2 not implemented");
     } else {
         execute_exception(psx, .CpU);
     }
@@ -1014,25 +1017,29 @@ fn execute_reserved_instruction(psx: *PSXState) void {
 // Most instruction also need to execute this AFTER reading to a register to get the correct value.
 // NOTE Currently the later condition is not needed because we double-buffer register values, but maybe we actually shouldn't for perf.
 fn execute_delayed_load(psx: *PSXState) void {
-    if (psx.cpu.regs.pending_load) |pending_load| {
+    if (psx.cpu.pending_load) |pending_load| {
         store_reg(&psx.cpu.regs, pending_load.register, pending_load.value);
-        psx.cpu.regs.pending_load = null;
+        psx.cpu.pending_load = null;
     }
 }
 
 fn execute_chained_delay_load(psx: *PSXState, register_name: cpu.RegisterName, value: u32) void {
-    if (psx.cpu.regs.pending_load) |pending_load| {
+    if (psx.cpu.pending_load) |pending_load| {
         if (pending_load.register != register_name) {
             store_reg(&psx.cpu.regs, pending_load.register, pending_load.value);
         }
     }
 
-    psx.cpu.regs.pending_load = .{ .register = register_name, .value = value };
+    psx.cpu.pending_load = .{ .register = register_name, .value = value };
 }
 
-fn execute_generic_branch(psx: *PSXState, offset: i32) void {
-    psx.cpu.regs.next_pc = wrapping_add_u32_i32(psx.cpu.regs.pc, offset);
-    psx.cpu.branch = true;
+fn execute_branch(psx: *PSXState, branch_address: u32, take_branch: bool) void {
+    if (take_branch) {
+        psx.cpu.regs.next_pc = branch_address;
+        psx.cpu.next_branch_delay_slot = .BranchTaken;
+    } else {
+        psx.cpu.next_branch_delay_slot = .BranchIgnored;
+    }
 }
 
 pub fn update_hardware_interrupt_line(psx: *PSXState) void {
@@ -1069,24 +1076,32 @@ fn execute_exception_bad_address(psx: *PSXState, cause: cpu.ExceptionCause, addr
 }
 
 fn execute_exception(psx: *PSXState, cause: cpu.ExceptionCause) void {
-    if (config.enable_debug_print) {
-        std.debug.print("Exception: {}\n", .{cause});
-    }
-
-    psx.cpu.regs.cause = @bitCast(@as(u32, 0));
-    psx.cpu.regs.cause.cause = cause;
-    psx.cpu.regs.cause.branch_delay = if (psx.cpu.delay_slot) 1 else 0;
+    // About op_code_b26_27:
+    // I'm choosing to ignore this for now, as it only matters for COPn instructions, but the real HW sets that for any instruction.
+    // This seems wasteful, so I'm keeping it simple.
+    psx.cpu.regs.cause = .{
+        .cause = cause,
+        .interrupt_pending = psx.cpu.regs.cause.interrupt_pending, // Keep that
+        .op_code_b26_27 = 0,
+        .branch_taken = psx.cpu.branch_delay_slot == .BranchTaken,
+        .branch_delay = psx.cpu.branch_delay_slot != .Inactive,
+    };
 
     psx.cpu.regs.epc = psx.cpu.regs.current_instruction_pc;
 
-    if (psx.cpu.delay_slot) {
+    if (psx.cpu.branch_delay_slot != .Inactive) {
         psx.cpu.regs.epc -%= 4;
+        psx.cpu.regs.tar = psx.cpu.regs.pc;
     }
 
     psx.cpu.regs.pc = if (psx.cpu.regs.sr.bev == 1) 0xbfc00180 else 0x80000080;
     psx.cpu.regs.next_pc = psx.cpu.regs.pc +% 4;
 
     execute_interrupt_stack_push(psx);
+
+    if (config.enable_debug_print) {
+        std.debug.print("Exception! CAUSE = {}\n", .{psx.cpu.regs.cause});
+    }
 }
 
 fn execute_interrupt_stack_push(psx: *PSXState) void {

@@ -114,7 +114,7 @@ fn load_generic(comptime T: type, psx: *PSXState, address: Address) T {
                             @panic("NOT IMPLEMENTED");
                         },
                         else => {
-                            std.debug.print("offset = {x}\n", .{address.offset});
+                            std.debug.print("offset = 0x{x}\n", .{address.offset});
                             @panic("Invalid offset");
                         },
                     }
@@ -134,7 +134,7 @@ fn load_generic(comptime T: type, psx: *PSXState, address: Address) T {
                     return std.mem.readInt(T, type_slice[0..type_bytes], .little);
                 },
                 else => {
-                    std.debug.print("address = {x}\n", .{address.offset});
+                    std.debug.print("address = 0x{x}\n", .{address.offset});
                     @panic("Invalid address");
                 },
             }

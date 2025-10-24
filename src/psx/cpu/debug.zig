@@ -180,7 +180,7 @@ fn print_cop_load_store(op_name: [:0]const u8, instruction: instructions.generic
     std.debug.print("{s}{} ${},{}(${})\n", .{ op_name, instruction.cop_index, instruction.rt_cop, instruction.imm_i16, instruction.rs });
 }
 
-pub fn print_instruction_with_pc_decorations(instruction: instructions.Instruction, current_pc: u32) void {
+pub fn print_instruction_with_pc_decorations(instruction: instructions.Instruction, op_code: u32, current_pc: u32) void {
     const pc_address: bus.Address = @bitCast(current_pc);
 
     switch (pc_address.mapping) {
@@ -209,7 +209,7 @@ pub fn print_instruction_with_pc_decorations(instruction: instructions.Instructi
         },
     }
 
-    std.debug.print("0x{x:0>8} ", .{current_pc});
+    std.debug.print("PC 0x{x:0>8} | 0x{x:0>8} ", .{ current_pc, op_code });
 
     print_instruction(instruction);
 }

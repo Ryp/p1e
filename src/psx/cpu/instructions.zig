@@ -395,17 +395,23 @@ const CopRegisterName = union(enum) {
 };
 
 const Cop0RegisterName = enum(u5) {
+    // R0 = 0,
+    // R1 = 1,
+    // R2 = 2,
     BPC = 3, // Breakpoint on execute (R/W)
+    // R4 = 4,
     BDA = 5, // Breakpoint on data access (R/W)
-    JUMPDEST = 6, // Randomly memorized jump address (R)
+    TAR = 6, // TAR - Return Address (R)
     DCIC = 7, // Breakpoint control (R/W)
     BadVaddr = 8, // Bad Virtual Address (R)
     BDAM = 9, // Data Access breakpoint mask (R/W)
+    // R10 = 10,
     BPCM = 11, // Execute breakpoint mask (R/W)
     SR = 12, // System status register (R/W)
     CAUSE = 13, // (R) Describes the most recently recognised exception
     EPC = 14, // Return Address from Trap (R)
     PRID = 15, // Processor ID (R)
+    // Missing misc + control registers
     _,
 };
 
