@@ -65,13 +65,48 @@ pub fn execute_main_loop(psx: *PSXState, allocator: std.mem.Allocator) !void {
 
         var sdlEvent: c.SDL_Event = undefined;
         while (c.SDL_PollEvent(&sdlEvent)) {
+            const ports_execution = @import("psx/ports/execution.zig");
             switch (sdlEvent.type) {
                 c.SDL_EVENT_QUIT => {
                     shouldExit = true;
                 },
                 c.SDL_EVENT_KEY_DOWN => {
-                    if (sdlEvent.key.key == c.SDLK_ESCAPE)
-                        shouldExit = true;
+                    switch (sdlEvent.key.key) {
+                        c.SDLK_ESCAPE => {
+                            shouldExit = true;
+                            continue;
+                        },
+                        c.SDLK_UP => {
+                            ports_execution.send_key_press(psx, .Up, true);
+                            continue;
+                        },
+                        c.SDLK_DOWN => {
+                            ports_execution.send_key_press(psx, .Down, true);
+                            continue;
+                        },
+                        c.SDLK_RETURN => {
+                            ports_execution.send_key_press(psx, .Cross, true);
+                            continue;
+                        },
+                        else => {},
+                    }
+                },
+                c.SDL_EVENT_KEY_UP => {
+                    switch (sdlEvent.key.key) {
+                        c.SDLK_UP => {
+                            ports_execution.send_key_press(psx, .Up, false);
+                            continue;
+                        },
+                        c.SDLK_DOWN => {
+                            ports_execution.send_key_press(psx, .Down, false);
+                            continue;
+                        },
+                        c.SDLK_RETURN => {
+                            ports_execution.send_key_press(psx, .Cross, false);
+                            continue;
+                        },
+                        else => {},
+                    }
                 },
                 else => {},
             }

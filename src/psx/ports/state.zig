@@ -1,7 +1,15 @@
+const controller_digital = @import("controller_digital.zig");
+const controller_none = @import("controller_none.zig");
+
 pub const PortsState = struct {
     joy: struct {
         rx_fifo: ?u8 = null, // FIFO in the docs, but it's normally 1 byte deep
     } = .{},
+
+    controller1: controller_digital.State = .{}, // FIXME RW
+    controller2: controller_none.State = .{}, // FIXME RW
+
+    pending_irq7_ticks: ?u32 = null, // FIXME RW
 
     pub fn write(self: @This(), writer: anytype) !void {
         if (self.joy.rx_fifo) |rx_fifo| {

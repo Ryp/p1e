@@ -10,6 +10,7 @@ const bus = @import("../bus.zig");
 const cdrom = @import("../cdrom/execution.zig");
 const gpu = @import("../gpu/execution.zig");
 const gte = @import("../gte/execution.zig");
+const ports = @import("../ports/execution.zig");
 const exe_sideloading = @import("../exe_sideloading.zig");
 const save_state = @import("../save_state.zig");
 
@@ -26,6 +27,7 @@ pub fn step_1k_times(psx: *PSXState) void {
     // FIXME super rough but good enough to get the shell working without missing IRQ messages.
     const ticks = steps * 2;
 
+    ports.execute_ticks(psx, ticks);
     cdrom.execute_ticks(psx, ticks);
     gpu.execute_ticks(psx, ticks);
 }
