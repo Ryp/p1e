@@ -14,6 +14,7 @@ const pixel_format = @import("pixel_format.zig");
 const PackedRGB8 = pixel_format.PackedRGB8;
 const PackedRGB5A1 = pixel_format.PackedRGB5A1;
 
+const draw_line = @import("draw_line.zig");
 const draw_poly = @import("draw_poly.zig");
 const draw_rect = @import("draw_rect.zig");
 
@@ -60,14 +61,14 @@ pub fn load_gpuread_u32(psx: *PSXState) u32 {
 
     switch (psx.gpu.gpuread_mode) {
         .idle => {
+            // Let it return the last value
             if (config.enable_gpu_debug) {
-                std.debug.print("GPUREAD in idle mode!\n", .{});
+                std.debug.print("WARNING: GPUREAD in idle mode!\n", .{});
             }
-            return 0; // FIXME We might have to return the last value instead
         },
-        .gpu_type => {
+        .gpu_attributes => {
+            // gpuread_last_value should already contain the right value by this point
             psx.gpu.gpuread_mode = .idle;
-            return state.GPUType;
         },
         .copy_rect_vram_to_cpu => |*copy_mode| {
             // FIXME handle mask settings
@@ -95,9 +96,11 @@ pub fn load_gpuread_u32(psx: *PSXState) u32 {
             }
 
             const dst_bytes = std.mem.asBytes(&dst_pixels);
-            return std.mem.bytesAsValue(u32, dst_bytes).*;
+            psx.gpu.gpuread_last_value = std.mem.bytesAsValue(u32, dst_bytes).*;
         },
     }
+
+    return psx.gpu.gpuread_last_value;
 }
 
 // FIXME be very careful with endianness here
@@ -166,7 +169,7 @@ pub fn store_gp0_u32(psx: *PSXState, value: u32) void {
 // Care with the return value, we update gp0_write_mode accordingly
 fn execute_gp0_command(psx: *PSXState, op_code: g0.OpCode, command_bytes: []const u8) state.GP0WriteMode {
     if (config.enable_gpu_debug) {
-        std.debug.print("Execute GP0 command = {}\n", .{op_code});
+        std.debug.print("Execute GP0 command 0x{x:0<2} = {any}\n", .{ @as(u8, @bitCast(op_code)), op_code });
     }
 
     return switch (op_code.primary) {
@@ -200,7 +203,7 @@ fn execute_gp0_command(psx: *PSXState, op_code: g0.OpCode, command_bytes: []cons
 
                     cpu_execution.request_hardware_interrupt(psx, .IRQ1_GPU);
 
-                    @panic("Test that!");
+                    @panic("Test that because I don't think it works");
                 },
                 _ => {
                     // Probably a noop => Do nothing!
@@ -219,7 +222,10 @@ fn execute_gp0_command(psx: *PSXState, op_code: g0.OpCode, command_bytes: []cons
         },
         .DrawLine => {
             std.debug.assert(!psx.gpu.backend.pending_draw);
-            @panic("Implement me!");
+
+            draw_line.execute(psx, op_code.secondary.draw_line, command_bytes);
+
+            return .idle;
         },
         .DrawRect => {
             std.debug.assert(!psx.gpu.backend.pending_draw);
@@ -251,6 +257,7 @@ fn execute_gp0_command(psx: *PSXState, op_code: g0.OpCode, command_bytes: []cons
             if (op_code.primary == .CopyRectangleCPUtoVRAM) {
                 return .{ .copy_rect_cpu_to_vram = copy_mode };
             } else {
+                std.debug.assert(psx.gpu.gpuread_mode == .idle);
                 psx.gpu.gpuread_mode = .{ .copy_rect_vram_to_cpu = copy_mode };
                 return .idle;
             }
@@ -271,7 +278,6 @@ fn execute_gp0_command(psx: *PSXState, op_code: g0.OpCode, command_bytes: []cons
                     psx.gpu.regs.rectangle_texture_x_flip = draw_mode.rectangle_texture_x_flip;
                     psx.gpu.regs.rectangle_texture_y_flip = draw_mode.rectangle_texture_y_flip;
 
-                    std.debug.assert(draw_mode.texture_page_colors != .Reserved);
                     std.debug.assert(draw_mode.zero_b14_23 == 0);
                 },
                 .SetTextureWindow => {
@@ -318,7 +324,7 @@ fn execute_gp0_command(psx: *PSXState, op_code: g0.OpCode, command_bytes: []cons
                     std.debug.assert(mask_bit_setting.zero_b2_23 == 0);
                 },
                 _ => {
-                    @panic("Implement me? Is that a command?");
+                    // Probably a noop => Do nothing!
                 },
             }
 
@@ -331,6 +337,8 @@ pub fn execute_gp1_command(psx: *PSXState, command_raw: g1.CommandRaw) void {
     if (config.enable_gpu_debug) {
         std.debug.print("GP1 COMMAND value: 0x{x:0>8}\n", .{@as(u32, @bitCast(command_raw))});
     }
+
+    std.debug.assert(command_raw.unused_b22_23 == 0); // Technically could be anything
 
     switch (g1.make_command(command_raw)) {
         .SoftReset => |soft_reset| {
@@ -348,7 +356,7 @@ pub fn execute_gp1_command(psx: *PSXState, command_raw: g1.CommandRaw) void {
 
             psx.mmio.gpu.GPUSTAT.interrupt_request = 0;
 
-            @panic("Test that!");
+            @panic("Test that because I don't think it works");
         },
         .SetDisplayEnabled => |display_enabled| {
             psx.mmio.gpu.GPUSTAT.display_enabled = display_enabled.display_enabled;
@@ -390,17 +398,19 @@ pub fn execute_gp1_command(psx: *PSXState, command_raw: g1.CommandRaw) void {
             std.debug.assert(display_mode.reverse_flag == 0);
             std.debug.assert(display_mode.zero_b8_23 == 0);
         },
+        .TextureDisableNew => |texture_disable_new| {
+            _ = texture_disable_new;
+            @panic("Unimplemented");
+        },
         .GetGPUInfo => |get_gpu_info| {
-            switch (get_gpu_info.op_code) {
-                .TextureWindowSetting => @panic("Implement me!"),
-                .DrawAreaTopLeft => @panic("Implement me!"),
-                .DrawAreaBottomRight => @panic("Implement me!"),
-                .DrawOffset => @panic("Implement me!"),
-                .GPUType => {
-                    psx.gpu.gpuread_mode = .gpu_type;
-                },
-                else => @panic("Invalid command or just missing?"),
-            }
+            std.debug.assert(get_gpu_info.unused_b4_23 == 0); // Technically could be anything
+
+            execute_get_gpu_info(psx, get_gpu_info.op_code);
+        },
+        .UnknownCrash => @panic("GP1 UnknownCrash command executed!"),
+        .TextureDisableOld => |texture_disable_old| {
+            std.debug.assert(texture_disable_old.unknown_b0_23 == .Enable or texture_disable_old.unknown_b0_23 == .Disable);
+            @panic("Unimplemented");
         },
     }
 }
@@ -433,6 +443,8 @@ fn execute_reset(psx: *PSXState) void {
 fn execute_reset_command_buffer(psx: *PSXState) void {
     psx.gpu.gp0_write_mode = .idle;
     psx.gpu.gpuread_mode = .idle;
+    psx.gpu.gpuread_last_value = 0;
+
     // FIXME clear command FIFO
 
     reset_frame_data(psx);
@@ -494,4 +506,66 @@ fn fill_rectangle_vram(psx: *PSXState, fill_rectangle: g0.FillRectangleInVRAM) v
 
         @memset(vram_type_line_rect, fill_color_rgb5);
     }
+}
+
+fn execute_get_gpu_info(psx: *PSXState, op_code: g1.GPUInfoOpCode) void {
+    const u32_4_u5 = packed struct(u32) {
+        a_x: u5,
+        a_y: u5,
+        b_x: u5,
+        b_y: u5,
+        zero_b20_31: u12 = 0,
+    };
+
+    const u32_2_u10 = packed struct(u32) {
+        x: u10,
+        y: u10,
+        zero_b20_31: u12 = 0,
+    };
+
+    const u32_2_i11 = packed struct(u32) {
+        x: i11,
+        y: i11,
+        zero_b22_31: u10 = 0,
+    };
+
+    switch (op_code) {
+        .TextureWindowSetting => {
+            psx.gpu.gpuread_last_value = @bitCast(u32_4_u5{
+                .a_x = @intCast(psx.gpu.regs.texture_window_x_mask >> 3),
+                .a_y = @intCast(psx.gpu.regs.texture_window_y_mask >> 3),
+                .b_x = @intCast(psx.gpu.regs.texture_window_x_offset >> 3),
+                .b_y = @intCast(psx.gpu.regs.texture_window_y_offset >> 3),
+            });
+        },
+        .DrawAreaTopLeft => {
+            psx.gpu.gpuread_last_value = @bitCast(u32_2_u10{
+                .x = @intCast(psx.gpu.regs.drawing_area_top),
+                .y = @intCast(psx.gpu.regs.drawing_area_left),
+            });
+        },
+        .DrawAreaBottomRight => {
+            psx.gpu.gpuread_last_value = @bitCast(u32_2_u10{
+                .x = @intCast(psx.gpu.regs.drawing_area_bottom - 1), // Exclusive to inclusive
+                .y = @intCast(psx.gpu.regs.drawing_area_right - 1),
+            });
+        },
+        .DrawOffset => {
+            psx.gpu.gpuread_last_value = @bitCast(u32_2_i11{
+                .x = psx.gpu.regs.drawing_x_offset,
+                .y = psx.gpu.regs.drawing_y_offset,
+            });
+        },
+        .GPUType => {
+            psx.gpu.gpuread_last_value = state.GPUType;
+        },
+        .Unknown => {
+            psx.gpu.gpuread_last_value = 0;
+        },
+        _ => {
+            return; // Nop, do nothing and not even update mode!
+        },
+    }
+
+    psx.gpu.gpuread_mode = .gpu_attributes;
 }

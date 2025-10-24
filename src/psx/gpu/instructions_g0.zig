@@ -35,7 +35,13 @@ pub fn get_command_size_bytes(op_code: OpCode) u32 {
             }
         },
         .DrawLine => {
-            unreachable; // FIXME Variable
+            const line = op_code.secondary.draw_line;
+
+            if (line.is_shaded) {
+                return 4 * 4;
+            } else { // !line.is_shaded
+                return 3 * 4;
+            }
         },
         .DrawRect => {
             const rect = op_code.secondary.draw_rect;
@@ -118,7 +124,7 @@ const ModifierOpCode = enum(u5) {
     SetDrawingAreaBottomRight = 0b00100, // E4h = 1110 0100b GP0(E4h) - Set Drawing Area bottom right (X2,Y2)
     SetDrawingOffset = 0b00101, // E5h = 1110 0101b GP0(E5h) - Set Drawing Offset (X,Y)
     SetMaskBitSetting = 0b00110, // E6h = 1110 0110b GP0(E6h)- Mask Bit Setting
-    _,
+    _, // Other should be nop but that's not 100% sure
 };
 
 //       ___S QTtx
@@ -201,7 +207,7 @@ const DrawTextureMode = enum(u1) {
 // 52h = 0101 0010b GP0(52h) - Shaded line, semi-transparent
 // 58h = 0101 1000b GP0(58h) - Shaded Poly-line, opaque
 // 5Ah = 0101 1010b GP0(5Ah) - Shaded Poly-line, semi-transparent
-const DrawLineOpCode = packed struct(u5) {
+pub const DrawLineOpCode = packed struct(u5) {
     zero_b0: bool,
     is_semi_transparent: bool,
     zero_b1: bool,
@@ -358,6 +364,32 @@ pub const DrawQuadShadedTextured = packed struct {
     v4_pos: PackedVertexPos,
     v4_texcoord: PackedTexCoord,
     zero_v4_b16_31: u16,
+};
+
+// Line
+pub const DrawLineMonochrome = packed struct(u96) {
+    color: PackedRGB8,
+    op_code: OpCode,
+
+    v1_pos: PackedVertexPos,
+
+    v2_pos: PackedVertexPos,
+
+    // More if poly-line
+};
+
+pub const DrawLineShaded = packed struct(u128) {
+    v1_color: PackedRGB8,
+    op_code: OpCode,
+
+    v1_pos: PackedVertexPos,
+
+    v2_color: PackedRGB8,
+    v2_unused: u8,
+
+    v2_pos: PackedVertexPos,
+
+    // More if poly-line
 };
 
 // Rect

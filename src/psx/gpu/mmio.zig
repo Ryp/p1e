@@ -131,7 +131,7 @@ const MMIO_GPU = packed struct {
         _4bits,
         _8bits,
         _15bits,
-        Reserved,
+        _15bits_Reserved,
     };
 
     pub const DrawToDisplayArea = enum(u1) {

@@ -291,14 +291,24 @@ fn draw_poly_triangle(psx: *PSXState, op_code: g0.DrawPolyOpCode, instance: Poly
                             output = clut_slice[index];
                         },
                         ._8bits => {
-                            @panic("8Bits Not implemented");
+                            std.debug.assert(instance.clut.zero == 0);
+
+                            const index_texel_offset = vram.flat_texel_offset(page_x_offset + tx / 2, page_y_offset + ty);
+                            const index_chunk: u16 = @bitCast(psx.gpu.vram_texels[index_texel_offset]);
+                            const index: u8 = @truncate(index_chunk >> @intCast((tx % 2) * 8));
+
+                            const clut_x = @as(u32, instance.clut.x) * 16;
+                            const clut_y = @as(u32, instance.clut.y);
+                            const clut_offset = vram.flat_texel_offset(clut_x, clut_y);
+                            const clut_slice = psx.gpu.vram_texels[clut_offset..][0..256];
+
+                            output = clut_slice[index];
                         },
-                        ._15bits => {
+                        ._15bits, ._15bits_Reserved => {
                             const texel_offset = vram.flat_texel_offset(page_x_offset + tx, page_y_offset + ty);
 
                             output = psx.gpu.vram_texels[texel_offset];
                         },
-                        .Reserved => @panic("Invalid texture page color mode"),
                     }
                 } else {
                     output = pixel_format.convert_rgb_f32_to_rgb5a1(color, 0);
@@ -328,11 +338,26 @@ pub fn compute_alpha_blending(background: pixel_format.PackedRGB5A1, foreground:
             .r = (background.r / 2) +| (foreground.r / 2),
             .g = (background.g / 2) +| (foreground.g / 2),
             .b = (background.b / 2) +| (foreground.b / 2),
-            .a = foreground.a, // FIXME
+            .a = foreground.a,
         },
-        .B_plus_F => @panic("B_plus_F not implemented"),
-        .B_minus_F => @panic("B_minus_F not implemented"),
-        .B_plus_F_quarter => @panic("B_plus_F_quarter not implemented"),
+        .B_plus_F => .{
+            .r = background.r +| foreground.r,
+            .g = background.g +| foreground.g,
+            .b = background.b +| foreground.b,
+            .a = foreground.a,
+        },
+        .B_minus_F => .{
+            .r = background.r -| foreground.r,
+            .g = background.g -| foreground.g,
+            .b = background.b -| foreground.b,
+            .a = foreground.a,
+        },
+        .B_plus_F_quarter => .{
+            .r = background.r +| (foreground.r / 4),
+            .g = background.g +| (foreground.g / 4),
+            .b = background.b +| (foreground.b / 4),
+            .a = foreground.a,
+        },
     };
 }
 

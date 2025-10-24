@@ -103,14 +103,24 @@ fn draw_rectangle_textured(psx: *PSXState, offset: g0.PackedVertexPos, size: g0.
                     output = clut_slice[index];
                 },
                 ._8bits => {
-                    @panic("8Bits Not implemented");
+                    std.debug.assert(palette.zero == 0);
+
+                    const index_texel_offset = vram.flat_texel_offset(page_x_offset + tx / 2, page_y_offset + ty);
+                    const index_chunk: u16 = @bitCast(psx.gpu.vram_texels[index_texel_offset]);
+                    const index: u8 = @truncate(index_chunk >> @intCast((tx % 2) * 8));
+
+                    const clut_x = @as(u32, palette.x) * 16;
+                    const clut_y = @as(u32, palette.y);
+                    const clut_offset = vram.flat_texel_offset(clut_x, clut_y);
+                    const clut_slice = psx.gpu.vram_texels[clut_offset..][0..256];
+
+                    output = clut_slice[index];
                 },
-                ._15bits => {
+                ._15bits, ._15bits_Reserved => {
                     const texel_offset = vram.flat_texel_offset(page_x_offset + tx, page_y_offset + ty);
 
                     output = psx.gpu.vram_texels[texel_offset];
                 },
-                .Reserved => @panic("Invalid texture page color mode"),
             }
 
             if (output == pixel_format.PackedRGB5A1{ .r = 0, .g = 0, .b = 0, .a = 0 }) {
