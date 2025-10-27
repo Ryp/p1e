@@ -102,11 +102,11 @@ pub fn load_mmio_u8(psx: *PSXState, offset: u29) u8 {
 pub fn load_mmio_u16(psx: *PSXState, offset: u29) u16 {
     std.debug.assert(offset >= MMIO.Offset and offset < MMIO.OffsetEnd);
 
-    _ = psx; // FIXME
+    _ = psx;
 
     switch (offset) {
         MMIO.CommandPort2_Offset => {
-            unreachable; // FIXME
+            @panic("Implement me!"); // FIXME
         },
         else => @panic("Invalid CDROM MMIO offset"),
     }

@@ -109,9 +109,11 @@ pub fn main_with_allocator(allocator: std.mem.Allocator) !void {
         };
     }
 
+    // FIXME Improve CDROM loading
     if (psx.load_cdrom_path) |cdrom_path| {
         psx.cdrom.image = try cdrom.open_cdrom_image_from_bin(cdrom_path);
     }
+    psx.cdrom.stat.is_shell_open = psx.cdrom.image == null;
 
     try loop.run(&psx, allocator);
 

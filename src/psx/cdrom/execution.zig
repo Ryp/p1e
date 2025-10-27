@@ -203,12 +203,24 @@ pub fn execute_primary_command(psx: *PSXState, command: mmio.Command) void {
             }
         },
         .GetID => {
-            @panic("Implement me! Are you in the shell? Skip it!");
+            request_interrupt_and_push_stat(psx, .ACK);
+
+            psx.cdrom.pending_secondary_command = .{
+                .command = .GetID,
+                .ticks_remaining = GetIDDurationTicks,
+            };
         },
         .ReadS => unreachable,
         .Reset => unreachable,
         .GetQ => unreachable,
-        .ReadTOC => unreachable,
+        .ReadTOC => {
+            request_interrupt_and_push_stat(psx, .ACK);
+
+            psx.cdrom.pending_secondary_command = .{
+                .command = .ReadTOC,
+                .ticks_remaining = ReadTOCDurationTicks,
+            };
+        },
         .VideoCD => unreachable,
         .Secret1 => unreachable,
         .Secret2 => unreachable,
@@ -224,6 +236,7 @@ pub fn execute_primary_command(psx: *PSXState, command: mmio.Command) void {
 }
 
 pub fn execute_ticks(psx: *PSXState, ticks: u32) void {
+    // FIXME A better state machine would be nice
     if (psx.cdrom.pending_primary_command) |*pending_command| {
         pending_command.ticks_remaining -|= ticks;
 
@@ -287,6 +300,44 @@ pub fn execute_ticks(psx: *PSXState, ticks: u32) void {
                     request_interrupt_and_push_stat(psx, .Complete);
                     psx.cdrom.pending_secondary_command = null;
                 },
+                .GetID => {
+                    //   1st byte: stat  (as usually, but with bit3 same as bit7 in 2nd byte)
+                    request_interrupt_and_push_stat(psx, .Complete);
+
+                    psx.cdrom.response_fifo.push(@bitCast(IDFlagByte{
+                        .cd_type = .Data, // FIXME Detect that?
+                        .cd_status = if (psx.cdrom.image == null) .Missing else .Present,
+                        .has_id_error = psx.cdrom.stat.has_id_error,
+                    })) catch unreachable;
+
+                    if (psx.cdrom.image != null) {
+                        //   3rd byte: Disk type (from TOC Point=A0h) (eg. 00h=Audio or Mode1, 20h=Mode2)
+                        psx.cdrom.response_fifo.push(0x20) catch unreachable; // FIXME
+
+                        //   4th byte: Usually 00h (or 8bit ATIP from Point=C0h, if session info exists)
+                        //     that 8bit ATIP value is taken form the middle 8bit of the 24bit ATIP value
+                        psx.cdrom.response_fifo.push(0x00) catch unreachable; // FIXME
+
+                        // FIXME Make it match with the PSX BIOS automatically
+                        psx.cdrom.response_fifo.push('S') catch unreachable;
+                        psx.cdrom.response_fifo.push('C') catch unreachable;
+                        psx.cdrom.response_fifo.push('E') catch unreachable;
+                        psx.cdrom.response_fifo.push('A') catch unreachable;
+                    } else {
+                        for (0..6) |_| {
+                            psx.cdrom.response_fifo.push(0x00) catch unreachable;
+                        }
+                    }
+
+                    psx.cdrom.pending_secondary_command = null;
+                },
+                .ReadTOC => {
+                    request_interrupt_and_push_stat(psx, .Complete);
+
+                    // FIXME do nothing!
+
+                    psx.cdrom.pending_secondary_command = null;
+                },
                 else => @panic("CDROM timed command not implemented"),
             }
         }
@@ -323,7 +374,13 @@ pub fn load_data_u32(psx: *PSXState) u32 {
         std.debug.assert(psx.cdrom.data_fifo.count >= 4);
 
         // NOTE: This FIFO never wraps around
-        return std.mem.readInt(u32, psx.cdrom.data_fifo.buffer[psx.cdrom.data_fifo.head..][0..4], .little);
+        const value = std.mem.readInt(u32, psx.cdrom.data_fifo.buffer[psx.cdrom.data_fifo.head..][0..4], .little);
+
+        // Update FIFO state manually
+        psx.cdrom.data_fifo.head += 4;
+        psx.cdrom.data_fifo.count -= 4;
+
+        return value;
     } else {
         return 0;
     }
@@ -332,7 +389,9 @@ pub fn load_data_u32(psx: *PSXState) u32 {
 // NOTE: All of this is very rough
 const InitDurationTicks = 5000;
 const SeekLDurationTicks = 5000;
-const PauseDurationTicks = 5000;
+const PauseDurationTicks = 20000;
+const GetIDDurationTicks = 5000;
+const ReadTOCDurationTicks = 500000;
 
 fn get_readn_ticks(psx: *PSXState) u32 {
     return timings.TicksPerSeconds / (image.FramesPerSeconds * psx.cdrom.read_speed_multiplier);
@@ -376,4 +435,21 @@ const HC05ControllerBiosVersionBCD_PU7 = HC05ControllerBiosVersionBCD{
     .month = 0x09,
     .day = 0x19,
     .version = 0xC0,
+};
+
+const IDFlagByte = packed struct(u8) {
+    unknown_b0: u1 = 0,
+    unknown_b1: u1 = 0,
+    unknown_b2: u1 = 0,
+    unknown_b3: u1 = 0,
+    cd_type: enum(u1) {
+        Data = 0,
+        Audio = 1,
+    },
+    unknown_b5: u1 = 0,
+    cd_status: enum(u1) {
+        Present = 0,
+        Missing = 1,
+    },
+    has_id_error: bool,
 };
