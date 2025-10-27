@@ -34,7 +34,7 @@ pub fn execute_dma_transfer(psx: *PSXState, channel: *dma_mmio.DMAChannel, chann
                         switch (channel_index) {
                             .Channel0_MDEC_IN, .Channel1_MDEC_OUT, .Channel4_SPU, .Channel5_PIO => {
                                 std.debug.print("DMA transfer to RAM on channel {} not implemented yet\n", .{channel_index});
-                                unreachable;
+                                @panic("Unimplemented");
                             },
                             .Channel2_GPU => {
                                 const command_word = gpu_execution.load_gpuread_u32(psx);
@@ -52,7 +52,7 @@ pub fn execute_dma_transfer(psx: *PSXState, channel: *dma_mmio.DMAChannel, chann
 
                                 bus.store_u32(psx, address_masked, src_word);
                             },
-                            .Invalid => unreachable,
+                            .Invalid => @panic("Invalid DMA channel"),
                         }
                     },
                     .FromRAM => {
@@ -62,10 +62,19 @@ pub fn execute_dma_transfer(psx: *PSXState, channel: *dma_mmio.DMAChannel, chann
 
                                 gpu_execution.store_gp0_u32(psx, command_word);
                             },
-                            .Channel0_MDEC_IN, .Channel1_MDEC_OUT, .Channel3_CDROM, .Channel4_SPU, .Channel5_PIO, .Channel6_OTC => {
-                                unreachable; // FIXME
+                            .Channel0_MDEC_IN, .Channel1_MDEC_OUT, .Channel3_CDROM => {
+                                std.debug.print("DMA transfer from RAM on channel {} not implemented yet\n", .{channel_index});
+                                @panic("Unimplemented");
                             },
-                            .Invalid => unreachable,
+                            .Channel4_SPU => {
+                                std.debug.print("SPU DMA transfer from RAM not implemented yet, ignored! {}\n", .{psx.mmio.dma.channel4.channel_control});
+                                @panic("Unimplemented");
+                            },
+                            .Channel5_PIO, .Channel6_OTC => {
+                                std.debug.print("DMA transfer from RAM on channel {} not implemented yet\n", .{channel_index});
+                                @panic("Unimplemented");
+                            },
+                            .Invalid => @panic("Invalid DMA channel"),
                         }
                     },
                 }
@@ -103,7 +112,7 @@ pub fn execute_dma_transfer(psx: *PSXState, channel: *dma_mmio.DMAChannel, chann
                 header_address = header.next_address & 0x1f_ff_fc;
             }
         },
-        .Reserved => unreachable,
+        .Reserved => @panic("Reserved"),
     }
 
     channel.channel_control.status = .StoppedOrCompleted;

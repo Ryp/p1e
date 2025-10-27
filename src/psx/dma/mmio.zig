@@ -23,7 +23,7 @@ pub fn load_mmio_generic(comptime T: type, psx: *PSXState, offset: u29) T {
             MMIO.Control_Offset, MMIO.Interrupt_Offset => {
                 return std.mem.readInt(T, type_slice, .little);
             },
-            else => unreachable,
+            else => @panic("Invalid DMA Register offset"),
         }
     }
 }
@@ -61,19 +61,19 @@ pub fn store_mmio_generic(comptime T: type, psx: *PSXState, offset: u29, value: 
                 const trigger = switch (channel.channel_control.sync_mode) {
                     .Manual => channel.channel_control.start_or_trigger == 1,
                     .Request, .LinkedList => true,
-                    .Reserved => unreachable,
+                    .Reserved => @panic("Reserved DMA sync mode"),
                 };
 
                 // This still happens on a regular shell boot.
                 if (channel.channel_control.sync_mode == .Manual and channel.channel_control.start_or_trigger == 0) {
-                    unreachable;
+                    @panic("DMA Manual mode write without trigger"); // FIXME I think I don't support this yet
                 }
 
                 if (channel.channel_control.status == .StartOrEnableOrBusy and trigger) {
                     execution.execute_dma_transfer(psx, channel, dma_offset.channel_index);
                 }
             },
-            .Invalid => unreachable,
+            .Invalid => @panic("Invalid DMA Register"),
         }
     } else {
         switch (offset) { // FIXME
@@ -88,10 +88,8 @@ pub fn store_mmio_generic(comptime T: type, psx: *PSXState, offset: u29, value: 
 
                 psx.mmio.dma.interrupt.zero_b6_14 = 0;
                 psx.mmio.dma.interrupt.reset_irq.raw = reset_irq_save & ~psx.mmio.dma.interrupt.reset_irq.raw;
-
-                // std.debug.print("DMA Interrupt Write {}\n", .{value});
             },
-            else => unreachable,
+            else => @panic("Invalid DMA offset"),
         }
     }
 }
@@ -130,7 +128,7 @@ fn get_dma_channel(psx: *PSXState, index: DMAChannelIndex) *DMAChannel {
         .Channel4_SPU => &psx.mmio.dma.channel4,
         .Channel5_PIO => &psx.mmio.dma.channel5,
         .Channel6_OTC => &psx.mmio.dma.channel6,
-        .Invalid => unreachable,
+        .Invalid => @panic("Invalid DMA channel index"),
     };
 }
 
