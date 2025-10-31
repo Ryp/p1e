@@ -107,6 +107,8 @@ pub fn main_with_allocator(allocator: std.mem.Allocator) !void {
             std.debug.print("Failed to load save state file '{s}': {}\n", .{ load_state_path, err });
             return err;
         };
+
+        std.debug.print("Loaded state from '{s}' at step {}\n", .{ load_state_path, psx.step_index });
     }
 
     // FIXME Improve CDROM loading

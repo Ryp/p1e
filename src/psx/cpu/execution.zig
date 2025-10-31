@@ -74,6 +74,8 @@ fn step(psx: *PSXState) void {
                 // FIXME error handling
             };
 
+            std.debug.print("Saved state in '{s}' at step {}\n", .{ save_state_path, psx.step_index });
+
             @panic("SAVED!");
         }
     }

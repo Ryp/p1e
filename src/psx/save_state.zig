@@ -23,11 +23,6 @@ pub fn save(psx: psx_state.PSXState, writer: anytype) !void {
     try writer.writeStruct(header);
 
     try psx.write(writer);
-
-    std.debug.print("Saved state with format version: {} at step {}\n", .{
-        header.version,
-        psx.step_index,
-    });
 }
 
 // FIXME handle errors properly
@@ -49,11 +44,6 @@ pub fn load(psx: *psx_state.PSXState, reader: anytype) !void {
     }
 
     try psx.read(reader);
-
-    std.debug.print("Loaded state with format version: {} at step {}\n", .{
-        header.version,
-        psx.step_index,
-    });
 }
 
 test "State serialization" {
