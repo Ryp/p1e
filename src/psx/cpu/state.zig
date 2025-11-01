@@ -29,9 +29,9 @@ pub const CPUState = struct {
     pub fn read(self: *@This(), reader: anytype) !void {
         try self.regs.read(reader);
 
-        const has_pending_load = try reader.readByte() != 0;
-        const register: RegisterName = @enumFromInt(try reader.readByte());
-        const value = try reader.readInt(u32, .little);
+        const has_pending_load = try reader.takeByte() != 0;
+        const register: RegisterName = @enumFromInt(try reader.takeByte());
+        const value = try reader.takeInt(u32, .little);
 
         self.pending_load = if (has_pending_load)
             .{
@@ -41,8 +41,8 @@ pub const CPUState = struct {
         else
             null;
 
-        self.next_branch_delay_slot = @enumFromInt(try reader.readByte());
-        self.branch_delay_slot = @enumFromInt(try reader.readByte());
+        self.next_branch_delay_slot = @enumFromInt(try reader.takeByte());
+        self.branch_delay_slot = @enumFromInt(try reader.takeByte());
     }
 
     const BranchDelay = enum {
@@ -89,37 +89,37 @@ pub const Registers = struct {
         try writer.writeInt(@TypeOf(self.bpc), self.bpc, .little);
         try writer.writeInt(@TypeOf(self.bda), self.bda, .little);
         try writer.writeInt(@TypeOf(self.tar), self.tar, .little);
-        try writer.writeStruct(self.dcic);
+        try writer.writeStruct(self.dcic, .little);
         try writer.writeInt(@TypeOf(self.bad_vaddr), self.bad_vaddr, .little);
         try writer.writeInt(@TypeOf(self.bpcm), self.bpcm, .little);
         try writer.writeInt(@TypeOf(self.bdam), self.bdam, .little);
-        try writer.writeStruct(self.sr);
-        try writer.writeStruct(self.cause);
+        try writer.writeStruct(self.sr, .little);
+        try writer.writeStruct(self.cause, .little);
         try writer.writeInt(@TypeOf(self.epc), self.epc, .little);
     }
 
     pub fn read(self: *@This(), reader: anytype) !void {
-        self.pc = try reader.readInt(@TypeOf(self.pc), .little);
-        self.next_pc = try reader.readInt(@TypeOf(self.next_pc), .little);
-        self.current_instruction_pc = try reader.readInt(@TypeOf(self.current_instruction_pc), .little);
+        self.pc = try reader.takeInt(@TypeOf(self.pc), .little);
+        self.next_pc = try reader.takeInt(@TypeOf(self.next_pc), .little);
+        self.current_instruction_pc = try reader.takeInt(@TypeOf(self.current_instruction_pc), .little);
 
         for (&self.gprs) |*gpr| {
-            gpr.* = try reader.readInt(u32, .little);
+            gpr.* = try reader.takeInt(u32, .little);
         }
 
-        self.hi = try reader.readInt(@TypeOf(self.hi), .little);
-        self.lo = try reader.readInt(@TypeOf(self.lo), .little);
+        self.hi = try reader.takeInt(@TypeOf(self.hi), .little);
+        self.lo = try reader.takeInt(@TypeOf(self.lo), .little);
 
-        self.bpc = try reader.readInt(@TypeOf(self.bpc), .little);
-        self.bda = try reader.readInt(@TypeOf(self.bda), .little);
-        self.tar = try reader.readInt(@TypeOf(self.tar), .little);
-        self.dcic = try reader.readStruct(@TypeOf(self.dcic));
-        self.bad_vaddr = try reader.readInt(@TypeOf(self.bad_vaddr), .little);
-        self.bpcm = try reader.readInt(@TypeOf(self.bpcm), .little);
-        self.bdam = try reader.readInt(@TypeOf(self.bdam), .little);
-        self.sr = try reader.readStruct(@TypeOf(self.sr));
-        self.cause = try reader.readStruct(@TypeOf(self.cause));
-        self.epc = try reader.readInt(@TypeOf(self.epc), .little);
+        self.bpc = try reader.takeInt(@TypeOf(self.bpc), .little);
+        self.bda = try reader.takeInt(@TypeOf(self.bda), .little);
+        self.tar = try reader.takeInt(@TypeOf(self.tar), .little);
+        self.dcic = try reader.takeStruct(@TypeOf(self.dcic), .little);
+        self.bad_vaddr = try reader.takeInt(@TypeOf(self.bad_vaddr), .little);
+        self.bpcm = try reader.takeInt(@TypeOf(self.bpcm), .little);
+        self.bdam = try reader.takeInt(@TypeOf(self.bdam), .little);
+        self.sr = try reader.takeStruct(@TypeOf(self.sr), .little);
+        self.cause = try reader.takeStruct(@TypeOf(self.cause), .little);
+        self.epc = try reader.takeInt(@TypeOf(self.epc), .little);
     }
 };
 

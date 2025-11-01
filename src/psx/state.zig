@@ -37,7 +37,8 @@ pub const PSXState = struct {
         try self.cdrom.write(writer);
         try self.ports.write(writer);
 
-        try writer.writeStruct(self.mmio);
+        try writer.writeStruct(self.mmio, .little);
+
         try writer.writeAll(self.ram);
         try writer.writeAll(&self.bios);
         try writer.writeAll(&self.scratchpad);
@@ -53,25 +54,14 @@ pub const PSXState = struct {
         try self.cdrom.read(reader);
         try self.ports.read(reader);
 
-        self.mmio = try reader.readStruct(@TypeOf(self.mmio));
+        self.mmio = try reader.takeStruct(@TypeOf(self.mmio), .little);
 
-        const ram_bytes_written = try reader.readAll(self.ram);
-        if (ram_bytes_written != self.ram.len) {
-            return error.InvalidRAMSize;
-        }
+        try reader.readSliceAll(self.ram);
+        try reader.readSliceAll(&self.bios);
+        try reader.readSliceAll(&self.scratchpad);
 
-        const bios_bytes_written = try reader.readAll(&self.bios);
-        if (bios_bytes_written != self.bios.len) {
-            return error.InvalidBIOSSize;
-        }
-
-        const scratchpad_bytes_written = try reader.readAll(&self.scratchpad);
-        if (scratchpad_bytes_written != self.scratchpad.len) {
-            return error.InvalidScratchPadSize;
-        }
-
-        self.step_index = try reader.readInt(@TypeOf(self.step_index), .little);
-        self.headless = try reader.readByte() != 0;
+        self.step_index = try reader.takeInt(@TypeOf(self.step_index), .little);
+        self.headless = try reader.takeByte() != 0;
     }
 };
 

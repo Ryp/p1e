@@ -101,47 +101,47 @@ pub const CDROMState = struct {
     }
 
     pub fn read(self: *@This(), reader: anytype) !void {
-        self.stat = @bitCast(try reader.readByte());
+        self.stat = @bitCast(try reader.takeByte());
 
-        self.volume_cd_L_to_spu_L = @enumFromInt(try reader.readByte());
-        self.volume_cd_R_to_spu_R = @enumFromInt(try reader.readByte());
-        self.volume_cd_L_to_spu_R = @enumFromInt(try reader.readByte());
-        self.volume_cd_R_to_spu_L = @enumFromInt(try reader.readByte());
+        self.volume_cd_L_to_spu_L = @enumFromInt(try reader.takeByte());
+        self.volume_cd_R_to_spu_R = @enumFromInt(try reader.takeByte());
+        self.volume_cd_L_to_spu_R = @enumFromInt(try reader.takeByte());
+        self.volume_cd_R_to_spu_L = @enumFromInt(try reader.takeByte());
 
-        self.irq_enabled_mask = @intCast(try reader.readByte());
-        self.irq_requested_mask = @intCast(try reader.readByte());
+        self.irq_enabled_mask = @intCast(try reader.takeByte());
+        self.irq_requested_mask = @intCast(try reader.takeByte());
 
         try self.parameter_fifo.read(reader);
         try self.response_fifo.read(reader);
         try self.data_fifo.read(reader);
 
-        self.data_requested = try reader.readByte() != 0;
+        self.data_requested = try reader.takeByte() != 0;
 
-        self.read_speed_multiplier = try reader.readInt(@TypeOf(self.read_speed_multiplier), .little);
-        self.sector_slice_mode = @enumFromInt(try reader.readByte());
+        self.read_speed_multiplier = try reader.takeInt(@TypeOf(self.read_speed_multiplier), .little);
+        self.sector_slice_mode = @enumFromInt(try reader.takeByte());
 
-        if (try reader.readByte() == 1) {
+        if (try reader.takeByte() == 1) {
             var pending_command: TimedCommand = undefined;
-            pending_command.command = @enumFromInt(try reader.readByte());
-            pending_command.ticks_remaining = try reader.readInt(@TypeOf(pending_command.ticks_remaining), .little);
+            pending_command.command = @enumFromInt(try reader.takeByte());
+            pending_command.ticks_remaining = try reader.takeInt(@TypeOf(pending_command.ticks_remaining), .little);
 
             self.pending_primary_command = pending_command;
         } else {
             self.pending_primary_command = null;
         }
 
-        if (try reader.readByte() == 1) {
+        if (try reader.takeByte() == 1) {
             var pending_command: TimedCommand = undefined;
-            pending_command.command = @enumFromInt(try reader.readByte());
-            pending_command.ticks_remaining = try reader.readInt(@TypeOf(pending_command.ticks_remaining), .little);
+            pending_command.command = @enumFromInt(try reader.takeByte());
+            pending_command.ticks_remaining = try reader.takeInt(@TypeOf(pending_command.ticks_remaining), .little);
 
             self.pending_secondary_command = pending_command;
         } else {
             self.pending_secondary_command = null;
         }
 
-        if (try reader.readByte() == 1) {
-            self.seek_target_sector = try reader.readInt(u32, .little);
+        if (try reader.takeByte() == 1) {
+            self.seek_target_sector = try reader.takeInt(u32, .little);
         } else {
             self.seek_target_sector = null;
         }
@@ -213,12 +213,12 @@ fn make_fifo(comptime T: type, comptime size: u32) type {
 
         pub fn read(self: *@This(), reader: anytype) !void {
             for (&self.buffer) |*elt| {
-                elt.* = try reader.readInt(T, .little);
+                elt.* = try reader.takeInt(T, .little);
             }
 
-            self.head = try reader.readInt(@TypeOf(self.head), .little);
-            self.tail = try reader.readInt(@TypeOf(self.tail), .little);
-            self.count = try reader.readInt(@TypeOf(self.count), .little);
+            self.head = try reader.takeInt(@TypeOf(self.head), .little);
+            self.tail = try reader.takeInt(@TypeOf(self.tail), .little);
+            self.count = try reader.takeInt(@TypeOf(self.count), .little);
         }
     };
 }

@@ -37,7 +37,7 @@ const Magic = packed struct(u64) {
 };
 
 // FIXME little endian is forced here
-pub fn load(psx: *PSXState, reader: anytype) !void {
+pub fn load(psx: *PSXState, reader: *std.Io.Reader) !void {
     comptime {
         const native_endian = @import("builtin").target.cpu.arch.endian();
         if (native_endian != .little) {
@@ -45,7 +45,7 @@ pub fn load(psx: *PSXState, reader: anytype) !void {
         }
     }
 
-    const header = try reader.readStruct(Header);
+    const header = try reader.takeStruct(Header, .little);
     const default_magic = Magic{};
 
     if (header.magic != default_magic) {
@@ -55,11 +55,11 @@ pub fn load(psx: *PSXState, reader: anytype) !void {
     std.debug.print("HEADER = {}\n", .{header});
 
     // Skip the rest of the header until the RAM content
-    try reader.skipBytes(BinaryOffset - @sizeOf(Header), .{});
+    reader.toss(BinaryOffset - @sizeOf(Header));
 
     const ram_at_load_offset = psx.ram[header.ram_dst_addr.offset - bus.RAM_Offset ..][0..header.exe_size_bytes];
 
-    _ = try reader.readAll(ram_at_load_offset);
+    _ = try reader.readSliceAll(ram_at_load_offset);
 
     psx.cpu.regs.pc = header.pc;
     psx.cpu.regs.next_pc = header.pc + 4;

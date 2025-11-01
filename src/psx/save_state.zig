@@ -17,17 +17,17 @@ const Header = packed struct(u64) {
 };
 
 // FIXME handle errors properly
-pub fn save(psx: psx_state.PSXState, writer: anytype) !void {
+pub fn save(psx: psx_state.PSXState, writer: *std.Io.Writer) !void {
     const header: Header = .{};
 
-    try writer.writeStruct(header);
+    try writer.writeStruct(header, .little);
 
     try psx.write(writer);
 }
 
 // FIXME handle errors properly
-pub fn load(psx: *psx_state.PSXState, reader: anytype) !void {
-    const header: Header = try reader.readStruct(Header);
+pub fn load(psx: *psx_state.PSXState, reader: *std.Io.Reader) !void {
+    const header: Header = try reader.takeStruct(Header, .little);
     const header_magic = [4]u8{ header.magic_0, header.magic_1, header.magic_2, header.magic_3 };
 
     if (!std.mem.eql(u8, &header_magic, Magic)) {
@@ -55,16 +55,17 @@ test "State serialization" {
 
     const BufferSize = 4 * 1024 * 1024; // 4 MiB buffer
     var buffer: [BufferSize]u8 = undefined;
-    var stream = std.io.fixedBufferStream(&buffer);
 
-    try save(psx, stream.writer());
+    var writer: std.Io.Writer = .fixed(&buffer);
 
-    stream.reset();
+    try save(psx, &writer);
 
     var psx_2 = try psx_state.create_state(bios, allocator);
     defer psx_state.destroy_state(&psx_2, allocator);
 
-    try load(&psx_2, stream.reader());
+    var reader: std.Io.Reader = .fixed(&buffer);
+
+    try load(&psx_2, &reader);
 
     try std.testing.expectEqual(psx.cpu, psx_2.cpu);
     // try std.testing.expectEqual(psx.mmio, psx_2.mmio); // FIXME packed unions are a problem

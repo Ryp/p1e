@@ -49,7 +49,10 @@ fn step(psx: *PSXState) void {
             };
             defer exe_file.close();
 
-            exe_sideloading.load(psx, exe_file.deprecatedReader()) catch |err| {
+            var reader_buffer: [std.heap.page_size_min]u8 = undefined;
+            var reader = exe_file.reader(&reader_buffer);
+
+            exe_sideloading.load(psx, &reader.interface) catch |err| {
                 std.debug.print("Failed to load exe: {}\n", .{err});
             };
         }
@@ -69,10 +72,16 @@ fn step(psx: *PSXState) void {
             };
             defer save_state_file.close();
 
-            save_state.save(psx.*, save_state_file.deprecatedWriter()) catch |err| {
+            var writer_buffer: [std.heap.page_size_min]u8 = undefined;
+            var writer = save_state_file.writer(&writer_buffer);
+            const generic_writer = &writer.interface;
+
+            save_state.save(psx.*, generic_writer) catch |err| {
                 std.debug.print("Failed to save state: {}\n", .{err});
                 // FIXME error handling
             };
+
+            generic_writer.flush() catch unreachable;
 
             std.debug.print("Saved state in '{s}' at step {}\n", .{ save_state_path, psx.step_index });
 
@@ -87,14 +96,14 @@ fn step(psx: *PSXState) void {
         if ((address_typed.offset == 0xA0 and t1_value == 0x3C) or (address_typed.offset == 0xB0 and t1_value == 0x3D)) {
             const char: u8 = @truncate(load_reg(psx.cpu.regs, .a0));
 
-            var stdout_buffer: [1024]u8 = undefined;
-            var stdout_writer = std.fs.File.stdout().writer(&stdout_buffer);
-            const stdout = &stdout_writer.interface;
+            var writer_buffer: [std.heap.page_size_min]u8 = undefined;
+            var writer = std.fs.File.stdout().writer(&writer_buffer);
+            const generic_writer = &writer.interface;
 
-            stdout.print("{c}", .{char}) catch |err| {
+            generic_writer.print("{c}", .{char}) catch |err| {
                 std.debug.print("Error writing to stdout: {}\n", .{err});
             };
-            stdout.flush() catch unreachable;
+            generic_writer.flush() catch unreachable;
         }
     }
 

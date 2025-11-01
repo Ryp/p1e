@@ -56,9 +56,10 @@ pub const Expansion2_MMIO = struct {
     pub const UnknownDebug_Offset = 0x1f802041;
 
     pub const Packed = packed struct {
-        // FIXME Abusing the compiler for 1 bit here, one more and we hit the limit.
+        // FIXME Abusing the compiler for 8 bit here, more and we hit the limit.
         // Really it should be 32768.
-        _unused: u32767 = undefined,
+        // The std.Io.Reader/Writer APIs work with slices of u8 so I had to round that up!
+        _unused: u32760 = undefined,
     };
 };
 

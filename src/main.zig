@@ -4,6 +4,8 @@ const Md5 = std.crypto.hash.Md5;
 
 const psx_state = @import("psx/state.zig");
 const cdrom = @import("psx/cdrom/image.zig");
+const save_state = @import("psx/save_state.zig");
+
 const loop = @import("renderer/loop.zig");
 
 const clap = @import("clap");
@@ -26,9 +28,9 @@ pub fn main() !void {
     if (tracy.enable_allocation) {
         var gpa_tracy = tracy.tracyAllocator(gpa);
         return main_with_allocator(gpa_tracy.allocator());
+    } else {
+        return main_with_allocator(gpa);
     }
-
-    return main_with_allocator(gpa);
 }
 
 pub fn main_with_allocator(allocator: std.mem.Allocator) !void {
@@ -37,15 +39,7 @@ pub fn main_with_allocator(allocator: std.mem.Allocator) !void {
 
     const embedded_bios = @embedFile("bios").*;
 
-    var hash_bytes: [Md5.digest_length]u8 = undefined;
-    Md5.hash(&embedded_bios, &hash_bytes, .{});
-
-    const hash = std.mem.readInt(md5_scalar, &hash_bytes, .big);
-
-    if (hash != scph1001_bin_md5) {
-        std.debug.print("SCPH1001.BIN MD5 hash mismatch. Expected: {x}, got: {x}\n", .{ scph1001_bin_md5, hash });
-        return error.InvalidBIOS;
-    }
+    try check_bios_hash(&embedded_bios);
 
     var psx = try psx_state.create_state(embedded_bios, allocator);
     defer psx_state.destroy_state(&psx, allocator);
@@ -101,9 +95,10 @@ pub fn main_with_allocator(allocator: std.mem.Allocator) !void {
         };
         defer exe_file.close();
 
-        const save_state = @import("psx/save_state.zig");
+        var reader_buffer: [std.heap.page_size_min]u8 = undefined;
+        var reader = exe_file.reader(&reader_buffer);
 
-        save_state.load(&psx, exe_file.deprecatedReader()) catch |err| {
+        save_state.load(&psx, &reader.interface) catch |err| {
             std.debug.print("Failed to load save state file '{s}': {}\n", .{ load_state_path, err });
             return err;
         };
@@ -124,9 +119,16 @@ pub fn main_with_allocator(allocator: std.mem.Allocator) !void {
     }
 }
 
-const md5_scalar = u128;
-const scph1001_bin_md5: md5_scalar = 0x924e392ed05558ffdb115408c263dccf;
+fn check_bios_hash(embedded_bios: []const u8) !void {
+    const SCPH1001_BIN_MD5 = 0x924e392ed05558ffdb115408c263dccf;
 
-comptime {
-    std.debug.assert(@sizeOf(md5_scalar) == Md5.digest_length);
+    var hash_bytes: [Md5.digest_length]u8 = undefined;
+    Md5.hash(embedded_bios, &hash_bytes, .{});
+
+    const hash = std.mem.readInt(u128, &hash_bytes, .big);
+
+    if (hash != SCPH1001_BIN_MD5) {
+        std.debug.print("SCPH1001.BIN MD5 hash mismatch. Expected: {x}, got: {x}\n", .{ SCPH1001_BIN_MD5, hash });
+        return error.InvalidBIOS;
+    }
 }

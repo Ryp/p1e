@@ -14,8 +14,8 @@ pub const PortsState = struct {
     }
 
     pub fn read(self: *@This(), reader: anytype) !void {
-        const has_rx_fifo = try reader.readByte() != 0;
-        const rx_fifo_value = try reader.readByte();
+        const has_rx_fifo = try reader.takeByte() != 0;
+        const rx_fifo_value = try reader.takeByte();
 
         self.joy.rx_fifo = if (has_rx_fifo) rx_fifo_value else null;
     }

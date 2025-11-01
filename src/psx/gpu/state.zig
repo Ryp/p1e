@@ -59,7 +59,8 @@ pub const GPUState = struct {
     // FIXME
     pub fn write(self: @This(), writer: anytype) !void {
         try writer.writeAll(std.mem.sliceAsBytes(self.vram_texels));
-        try writer.writeStruct(self.regs);
+
+        try writer.writeStruct(self.regs, .little);
 
         switch (self.gp0_write_mode) {
             .idle => {
@@ -67,14 +68,14 @@ pub const GPUState = struct {
             },
             .waiting_for_command_bytes => |state| {
                 try writer.writeByte(1);
-                try writer.writeStruct(state.op_code);
+                try writer.writeStruct(state.op_code, .little);
                 try writer.writeAll(&state.bytes);
                 try writer.writeInt(@TypeOf(state.current_byte_index), state.current_byte_index, .little);
                 try writer.writeInt(@TypeOf(state.command_size_bytes), state.command_size_bytes, .little);
             },
             .copy_rect_cpu_to_vram => |state| {
                 try writer.writeByte(2);
-                try writer.writeStruct(state.command);
+                try writer.writeStruct(state.command, .little);
                 try writer.writeInt(@TypeOf(state.index_x), state.index_x, .little);
                 try writer.writeInt(@TypeOf(state.index_y), state.index_y, .little);
             },
@@ -85,46 +86,39 @@ pub const GPUState = struct {
 
     // FIXME
     pub fn read(self: *@This(), reader: anytype) !void {
-        const vram_bytes = std.mem.sliceAsBytes(self.vram_texels);
-        const vram_bytes_written = try reader.readAll(vram_bytes);
-        if (vram_bytes_written != vram_bytes.len) {
-            return error.InvalidVRAMSize;
-        }
+        try reader.readSliceAll(std.mem.sliceAsBytes(self.vram_texels));
 
-        self.regs = try reader.readStruct(@TypeOf(self.regs));
+        self.regs = try reader.takeStruct(@TypeOf(self.regs), .little);
 
-        const gp0_write_mode_tag = try reader.readByte();
+        const gp0_write_mode_tag = try reader.takeByte();
 
         switch (gp0_write_mode_tag) {
             0 => self.gp0_write_mode = .idle,
             1 => {
                 var state: GP0WriteMode.WaitingForCommandBytes = undefined;
 
-                state.op_code = try reader.readStruct(@TypeOf(state.op_code));
+                state.op_code = try reader.takeStruct(@TypeOf(state.op_code), .little);
 
-                const bytes_written = try reader.readAll(&state.bytes);
-                if (bytes_written != state.bytes.len) {
-                    return error.InvalidGP0CommandBytesSize;
-                }
+                try reader.readSliceAll(&state.bytes);
 
-                state.current_byte_index = try reader.readInt(@TypeOf(state.current_byte_index), .little);
-                state.command_size_bytes = try reader.readInt(@TypeOf(state.command_size_bytes), .little);
+                state.current_byte_index = try reader.takeInt(@TypeOf(state.current_byte_index), .little);
+                state.command_size_bytes = try reader.takeInt(@TypeOf(state.command_size_bytes), .little);
 
                 self.gp0_write_mode = .{ .waiting_for_command_bytes = state };
             },
             2 => {
                 var state: CopyMode = undefined;
 
-                state.command = try reader.readStruct(@TypeOf(state.command));
-                state.index_x = try reader.readInt(@TypeOf(state.index_x), .little);
-                state.index_y = try reader.readInt(@TypeOf(state.index_y), .little);
+                state.command = try reader.takeStruct(@TypeOf(state.command), .little);
+                state.index_x = try reader.takeInt(@TypeOf(state.index_x), .little);
+                state.index_y = try reader.takeInt(@TypeOf(state.index_y), .little);
 
                 self.gp0_write_mode = .{ .copy_rect_cpu_to_vram = state };
             },
             else => return error.InvalidGP0WriteMode,
         }
 
-        self.pending_vblank_ticks = try reader.readInt(@TypeOf(self.pending_vblank_ticks), .little);
+        self.pending_vblank_ticks = try reader.takeInt(@TypeOf(self.pending_vblank_ticks), .little);
     }
 };
 
