@@ -202,8 +202,6 @@ fn execute_gp0_command(psx: *PSXState, op_code: g0.OpCode, command_bytes: []cons
                     psx.mmio.gpu.GPUSTAT.interrupt_request = 1;
 
                     cpu_execution.request_hardware_interrupt(psx, .IRQ1_GPU);
-
-                    @panic("Test that because I don't think it works");
                 },
                 _ => {
                     // Probably a noop => Do nothing!
@@ -296,7 +294,7 @@ fn execute_gp0_command(psx: *PSXState, op_code: g0.OpCode, command_bytes: []cons
                     psx.gpu.regs.drawing_area_left = drawing_area.left;
                     psx.gpu.regs.drawing_area_top = drawing_area.top;
 
-                    std.debug.assert(drawing_area.zero_b20_23 == 0);
+                    // std.debug.assert(drawing_area.zero_b20_23 == 0);
                 },
                 .SetDrawingAreaBottomRight => {
                     const drawing_area = std.mem.bytesAsValue(g0.SetDrawingAreaBottomRight, command_bytes);
@@ -305,7 +303,7 @@ fn execute_gp0_command(psx: *PSXState, op_code: g0.OpCode, command_bytes: []cons
                     psx.gpu.regs.drawing_area_right = @as(u32, drawing_area.right) + 1;
                     psx.gpu.regs.drawing_area_bottom = @as(u32, drawing_area.bottom) + 1;
 
-                    std.debug.assert(drawing_area.zero_b20_23 == 0);
+                    // std.debug.assert(drawing_area.zero_b20_23 == 0);
                 },
                 .SetDrawingOffset => {
                     const drawing_offset = std.mem.bytesAsValue(g0.SetDrawingOffset, command_bytes);
@@ -355,8 +353,6 @@ pub fn execute_gp1_command(psx: *PSXState, command_raw: g1.CommandRaw) void {
             std.debug.assert(acknowledge_interrupt.zero_b0_23 == 0);
 
             psx.mmio.gpu.GPUSTAT.interrupt_request = 0;
-
-            @panic("Test that because I don't think it works");
         },
         .SetDisplayEnabled => |display_enabled| {
             psx.mmio.gpu.GPUSTAT.display_enabled = display_enabled.display_enabled;

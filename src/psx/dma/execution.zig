@@ -70,8 +70,8 @@ pub fn execute_dma_transfer(psx: *PSXState, channel: *dma_mmio.DMAChannel, chann
                                 @panic("Unimplemented");
                             },
                             .Channel4_SPU => {
-                                std.debug.print("SPU DMA transfer from RAM not implemented yet, ignored! {}\n", .{psx.mmio.dma.channel4.channel_control});
-                                @panic("Unimplemented");
+                                // std.debug.print("SPU DMA transfer from RAM not implemented yet, ignored! {}\n", .{psx.mmio.dma.channel4.channel_control});
+                                // @panic("Unimplemented");
                             },
                             .Channel5_PIO, .Channel6_OTC => {
                                 std.debug.print("DMA transfer from RAM on channel {} not implemented yet\n", .{channel_index});

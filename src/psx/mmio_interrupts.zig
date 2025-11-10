@@ -45,7 +45,7 @@ pub fn store_mmio_generic(comptime T: type, psx: *PSXState, offset: u29, value: 
 
             std.debug.assert(psx.mmio.irq.mask.typed.irq4_tmr0 == 0);
             std.debug.assert(psx.mmio.irq.mask.typed.irq5_tmr1 == 0);
-            std.debug.assert(psx.mmio.irq.mask.typed.irq6_tmr2 == 0);
+            // std.debug.assert(psx.mmio.irq.mask.typed.irq6_tmr2 == 0);
 
             if (config.enable_irq_debug) {
                 std.debug.print("IRQ Mask set = {}\n", .{psx.mmio.irq.mask.typed});

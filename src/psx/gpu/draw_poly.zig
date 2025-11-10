@@ -6,6 +6,7 @@ const state = @import("state.zig");
 const PhatVertex = state.PhatVertex;
 const f32_2 = state.f32_2;
 const f32_3 = state.f32_3;
+const i32_2 = @Vector(2, i32);
 
 const g0 = @import("instructions_g0.zig");
 const mmio = @import("mmio.zig");
@@ -102,6 +103,11 @@ pub fn execute(psx: *PSXState, draw_poly: g0.DrawPolyOpCode, command_bytes: []co
                 .clut = command_textured.palette,
                 .tex_page = command_textured.tex_page,
             };
+
+            psx.mmio.gpu.GPUSTAT.texture_x_base = command_textured.tex_page.texture_x_base;
+            psx.mmio.gpu.GPUSTAT.texture_y_base = command_textured.tex_page.texture_y_base;
+            psx.mmio.gpu.GPUSTAT.texture_page_colors = command_textured.tex_page.texture_page_colors;
+            // FIXME add texture base y 2!
 
             draw_poly_generic(psx, draw_poly, instance, phat_vertices);
         } else {
@@ -201,7 +207,6 @@ pub fn push_poly_color(psx: *PSXState, op_code: g0.DrawPolyOpCode, vertices: []c
 }
 
 // FIXME overlap of quads along the diagonal, maybe we're not correctly excluding pixels on the edge
-// FIXME handle draw offset and clipping
 fn draw_poly_triangle(psx: *PSXState, op_code: g0.DrawPolyOpCode, instance: PolyInstance, v: [3]PhatVertex) void {
     const v1 = v[0];
     var v2 = v[1];
@@ -220,9 +225,15 @@ fn draw_poly_triangle(psx: *PSXState, op_code: g0.DrawPolyOpCode, instance: Poly
     const v_max_x = @max(v1.pos[0], @max(v2.pos[0], v3.pos[0]));
     const v_max_y = @max(v1.pos[1], @max(v2.pos[1], v3.pos[1]));
 
-    const triangle_aabb_f32 = AABB_f32_2{
+    var triangle_aabb_f32 = AABB_f32_2{
         .min = .{ v_min_x, v_min_y },
         .max = .{ v_max_x, v_max_y },
+    };
+
+    // Apply drawing offsets
+    triangle_aabb_f32.min += .{
+        @floatFromInt(psx.gpu.regs.drawing_x_offset),
+        @floatFromInt(psx.gpu.regs.drawing_y_offset),
     };
 
     const triangle_aabb_u32 = AABB_u32_2{
@@ -236,95 +247,109 @@ fn draw_poly_triangle(psx: *PSXState, op_code: g0.DrawPolyOpCode, instance: Poly
         },
     };
 
-    for (triangle_aabb_u32.min[1]..triangle_aabb_u32.max[1]) |y| {
-        for (triangle_aabb_u32.min[0]..triangle_aabb_u32.max[0]) |x| {
-            const pos: f32_2 = .{
-                @floatFromInt(x),
-                @floatFromInt(y),
-            };
+    // Clip to drawing area
+    const clipped_triangle_aabb_u32 = AABB_u32_2{
+        .min = @intCast(@max(triangle_aabb_u32.min, i32_2{
+            @intCast(psx.gpu.regs.drawing_area_left),
+            @intCast(psx.gpu.regs.drawing_area_top),
+        })),
+        .max = @intCast(@min(triangle_aabb_u32.max, i32_2{
+            @intCast(psx.gpu.regs.drawing_area_right),
+            @intCast(psx.gpu.regs.drawing_area_bottom),
+        })),
+    };
 
-            const det_v12 = det2(v2.pos - v1.pos, pos - v1.pos);
-            const det_v23 = det2(v3.pos - v2.pos, pos - v2.pos);
-            const det_v31 = det2(v1.pos - v3.pos, pos - v3.pos);
+    if (clipped_triangle_aabb_u32.max[0] > clipped_triangle_aabb_u32.min[0] and clipped_triangle_aabb_u32.max[1] > clipped_triangle_aabb_u32.min[1]) {
+        for (clipped_triangle_aabb_u32.min[1]..clipped_triangle_aabb_u32.max[1]) |y| {
+            for (clipped_triangle_aabb_u32.min[0]..clipped_triangle_aabb_u32.max[0]) |x| {
+                const pos: f32_2 = .{
+                    @floatFromInt(x),
+                    @floatFromInt(y),
+                };
 
-            const l1 = det_v23 / det_v123;
-            const l2 = det_v31 / det_v123;
-            const l3 = det_v12 / det_v123;
+                const det_v12 = det2(v2.pos - v1.pos, pos - v1.pos);
+                const det_v23 = det2(v3.pos - v2.pos, pos - v2.pos);
+                const det_v31 = det2(v1.pos - v3.pos, pos - v3.pos);
 
-            const color = v1.color * @as(f32_3, @splat(l1)) + v2.color * @as(f32_3, @splat(l2)) + v3.color * @as(f32_3, @splat(l3));
+                const l1 = det_v23 / det_v123;
+                const l2 = det_v31 / det_v123;
+                const l3 = det_v12 / det_v123;
 
-            const tex = v1.tex * @as(f32_2, @splat(l1)) + v2.tex * @as(f32_2, @splat(l2)) + v3.tex * @as(f32_2, @splat(l3));
+                const color = v1.color * @as(f32_3, @splat(l1)) + v2.color * @as(f32_3, @splat(l2)) + v3.color * @as(f32_3, @splat(l3));
 
-            if (det_v12 >= 0.0 and det_v23 >= 0.0 and det_v31 >= 0.0) {
-                var output: pixel_format.PackedRGB5A1 = undefined;
-                const vram_output_offset = vram.flat_texel_offset(x, y);
+                const tex = v1.tex * @as(f32_2, @splat(l1)) + v2.tex * @as(f32_2, @splat(l2)) + v3.tex * @as(f32_2, @splat(l3));
 
-                if (op_code.is_textured) {
-                    // FIXME
-                    std.debug.assert(instance.tex_page.zero_b14_15 == 0);
-                    const page_x_offset = @as(u32, instance.tex_page.texture_x_base) * 64;
-                    const page_y_offset = @as(u32, instance.tex_page.texture_y_base) * 256;
+                if (det_v12 >= 0.0 and det_v23 >= 0.0 and det_v31 >= 0.0) {
+                    var output: pixel_format.PackedRGB5A1 = undefined;
+                    const vram_output_offset = vram.flat_texel_offset(x, y);
 
-                    var tx: u32 = @as(u8, @intFromFloat(tex[0]));
-                    var ty: u32 = @as(u8, @intFromFloat(tex[1]));
+                    if (op_code.is_textured) {
+                        // FIXME
+                        std.debug.assert(instance.tex_page.zero_b14_15 == 0);
+                        const page_x_offset = @as(u32, instance.tex_page.texture_x_base) * 64;
+                        const page_y_offset = @as(u32, instance.tex_page.texture_y_base) * 256;
 
-                    std.debug.assert(tx < 256);
-                    std.debug.assert(ty < 256);
+                        var tx: u32 = @as(u8, @intFromFloat(tex[0]));
+                        var ty: u32 = @as(u8, @intFromFloat(tex[1]));
 
-                    // FIXME
-                    tx = (tx & ~psx.gpu.regs.texture_window_x_mask) | (psx.gpu.regs.texture_window_x_offset & psx.gpu.regs.texture_window_x_mask);
-                    ty = (ty & ~psx.gpu.regs.texture_window_y_mask) | (psx.gpu.regs.texture_window_y_offset & psx.gpu.regs.texture_window_y_mask);
+                        std.debug.assert(tx < 256);
+                        std.debug.assert(ty < 256);
 
-                    switch (instance.tex_page.texture_page_colors) {
-                        ._4bits => {
-                            std.debug.assert(instance.clut.zero == 0);
+                        // FIXME
+                        tx = (tx & ~psx.gpu.regs.texture_window_x_mask) | (psx.gpu.regs.texture_window_x_offset & psx.gpu.regs.texture_window_x_mask);
+                        ty = (ty & ~psx.gpu.regs.texture_window_y_mask) | (psx.gpu.regs.texture_window_y_offset & psx.gpu.regs.texture_window_y_mask);
 
-                            const index_texel_offset = vram.flat_texel_offset(page_x_offset + tx / 4, page_y_offset + ty);
-                            const index_chunk: u16 = @bitCast(psx.gpu.vram_texels[index_texel_offset]);
-                            const index: u4 = @truncate(index_chunk >> @intCast((tx % 4) * 4));
+                        switch (instance.tex_page.texture_page_colors) {
+                            ._4bits => {
+                                std.debug.assert(instance.clut.zero == 0);
 
-                            const clut_x = @as(u32, instance.clut.x) * 16;
-                            const clut_y = @as(u32, instance.clut.y);
-                            const clut_offset = vram.flat_texel_offset(clut_x, clut_y);
-                            const clut_slice = psx.gpu.vram_texels[clut_offset..][0..16];
+                                const index_texel_offset = vram.flat_texel_offset(page_x_offset + tx / 4, page_y_offset + ty);
+                                const index_chunk: u16 = @bitCast(psx.gpu.vram_texels[index_texel_offset]);
+                                const index: u4 = @truncate(index_chunk >> @intCast((tx % 4) * 4));
 
-                            output = clut_slice[index];
-                        },
-                        ._8bits => {
-                            std.debug.assert(instance.clut.zero == 0);
+                                const clut_x = @as(u32, instance.clut.x) * 16;
+                                const clut_y = @as(u32, instance.clut.y);
+                                const clut_offset = vram.flat_texel_offset(clut_x, clut_y);
+                                const clut_slice = psx.gpu.vram_texels[clut_offset..][0..16];
 
-                            const index_texel_offset = vram.flat_texel_offset(page_x_offset + tx / 2, page_y_offset + ty);
-                            const index_chunk: u16 = @bitCast(psx.gpu.vram_texels[index_texel_offset]);
-                            const index: u8 = @truncate(index_chunk >> @intCast((tx % 2) * 8));
+                                output = clut_slice[index];
+                            },
+                            ._8bits => {
+                                std.debug.assert(instance.clut.zero == 0);
 
-                            const clut_x = @as(u32, instance.clut.x) * 16;
-                            const clut_y = @as(u32, instance.clut.y);
-                            const clut_offset = vram.flat_texel_offset(clut_x, clut_y);
-                            const clut_slice = psx.gpu.vram_texels[clut_offset..][0..256];
+                                const index_texel_offset = vram.flat_texel_offset(page_x_offset + tx / 2, page_y_offset + ty);
+                                const index_chunk: u16 = @bitCast(psx.gpu.vram_texels[index_texel_offset]);
+                                const index: u8 = @truncate(index_chunk >> @intCast((tx % 2) * 8));
 
-                            output = clut_slice[index];
-                        },
-                        ._15bits, ._15bits_Reserved => {
-                            const texel_offset = vram.flat_texel_offset(page_x_offset + tx, page_y_offset + ty);
+                                const clut_x = @as(u32, instance.clut.x) * 16;
+                                const clut_y = @as(u32, instance.clut.y);
+                                const clut_offset = vram.flat_texel_offset(clut_x, clut_y);
+                                const clut_slice = psx.gpu.vram_texels[clut_offset..][0..256];
 
-                            output = psx.gpu.vram_texels[texel_offset];
-                        },
+                                output = clut_slice[index];
+                            },
+                            ._15bits, ._15bits_Reserved => {
+                                const texel_offset = vram.flat_texel_offset(page_x_offset + tx, page_y_offset + ty);
+
+                                output = psx.gpu.vram_texels[texel_offset];
+                            },
+                        }
+                    } else {
+                        output = pixel_format.convert_rgb_f32_to_rgb5a1(color, 0);
                     }
-                } else {
-                    output = pixel_format.convert_rgb_f32_to_rgb5a1(color, 0);
-                }
 
-                if (output == pixel_format.PackedRGB5A1{ .r = 0, .g = 0, .b = 0, .a = 0 }) {
-                    continue;
-                } else if (op_code.is_semi_transparent and output.a == 1) {
-                    const background = psx.gpu.vram_texels[vram_output_offset];
+                    if (output == pixel_format.PackedRGB5A1{ .r = 0, .g = 0, .b = 0, .a = 0 }) {
+                        continue;
+                    } else if (op_code.is_semi_transparent and output.a == 1) {
+                        const background = psx.gpu.vram_texels[vram_output_offset];
 
-                    // FIXME if not textured, do we get semi_transparency_mode from GPUSTAT?
-                    std.debug.assert(op_code.is_textured);
+                        // FIXME if not textured, do we get semi_transparency_mode from GPUSTAT?
+                        std.debug.assert(op_code.is_textured);
 
-                    psx.gpu.vram_texels[vram_output_offset] = compute_alpha_blending(background, output, instance.tex_page.semi_transparency_mode);
-                } else {
-                    psx.gpu.vram_texels[vram_output_offset] = output;
+                        psx.gpu.vram_texels[vram_output_offset] = compute_alpha_blending(background, output, instance.tex_page.semi_transparency_mode);
+                    } else {
+                        psx.gpu.vram_texels[vram_output_offset] = output;
+                    }
                 }
             }
         }

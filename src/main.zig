@@ -95,7 +95,7 @@ pub fn main_with_allocator(allocator: std.mem.Allocator) !void {
         };
         defer exe_file.close();
 
-        var reader_buffer: [std.heap.page_size_min]u8 = undefined;
+        var reader_buffer: [4 * 1024 * 1024]u8 = undefined; // FIXME
         var reader = exe_file.reader(&reader_buffer);
 
         save_state.load(&psx, &reader.interface) catch |err| {

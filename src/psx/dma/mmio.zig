@@ -65,9 +65,9 @@ pub fn store_mmio_generic(comptime T: type, psx: *PSXState, offset: u29, value: 
                 };
 
                 // This still happens on a regular shell boot.
-                if (channel.channel_control.sync_mode == .Manual and channel.channel_control.start_or_trigger == 0) {
-                    @panic("DMA Manual mode write without trigger"); // FIXME I think I don't support this yet
-                }
+                // if (channel.channel_control.sync_mode == .Manual and channel.channel_control.trigger == .Normal) {
+                //     @panic("DMA Manual mode write without trigger"); // FIXME I think I don't support this yet
+                // }
 
                 if (channel.channel_control.status == .StartOrEnableOrBusy and trigger) {
                     execution.execute_dma_transfer(psx, channel, dma_offset.channel_index);

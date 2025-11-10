@@ -66,72 +66,74 @@ fn draw_rectangle_textured(psx: *PSXState, offset: g0.PackedVertexPos, size: g0.
         @intCast(psx.gpu.regs.drawing_area_bottom),
     }));
 
-    for (clipped_top_left[1]..clipped_bottom_right[1]) |y| {
-        for (clipped_top_left[0]..clipped_bottom_right[0]) |x| {
-            const texcoords = i32_2{ @intCast(x), @intCast(y) } - top_left;
+    if (clipped_bottom_right[0] > clipped_top_left[0] and clipped_bottom_right[1] > clipped_top_left[1]) {
+        for (clipped_top_left[1]..clipped_bottom_right[1]) |y| {
+            for (clipped_top_left[0]..clipped_bottom_right[0]) |x| {
+                const texcoords = i32_2{ @intCast(x), @intCast(y) } - top_left;
 
-            var output: pixel_format.PackedRGB5A1 = undefined;
-            const vram_output_offset = vram.flat_texel_offset(x, y);
+                var output: pixel_format.PackedRGB5A1 = undefined;
+                const vram_output_offset = vram.flat_texel_offset(x, y);
 
-            // FIXME
-            const page_x_offset = @as(u32, psx.mmio.gpu.GPUSTAT.texture_x_base) * 64;
-            const page_y_offset = @as(u32, psx.mmio.gpu.GPUSTAT.texture_y_base) * 256;
+                // FIXME
+                const page_x_offset = @as(u32, psx.mmio.gpu.GPUSTAT.texture_x_base) * 64;
+                const page_y_offset = @as(u32, psx.mmio.gpu.GPUSTAT.texture_y_base) * 256;
 
-            var tx: u32 = (@as(u32, @intCast(texcoords[0])) + offset_texcoord.x) % 256;
-            var ty: u32 = (@as(u32, @intCast(texcoords[1])) + offset_texcoord.y) % 256;
+                var tx: u32 = (@as(u32, @intCast(texcoords[0])) + offset_texcoord.x) % 256;
+                var ty: u32 = (@as(u32, @intCast(texcoords[1])) + offset_texcoord.y) % 256;
 
-            std.debug.assert(tx < 256);
-            std.debug.assert(ty < 256);
+                std.debug.assert(tx < 256);
+                std.debug.assert(ty < 256);
 
-            // FIXME
-            tx = (tx & ~psx.gpu.regs.texture_window_x_mask) | (psx.gpu.regs.texture_window_x_offset & psx.gpu.regs.texture_window_x_mask);
-            ty = (ty & ~psx.gpu.regs.texture_window_y_mask) | (psx.gpu.regs.texture_window_y_offset & psx.gpu.regs.texture_window_y_mask);
+                // FIXME
+                tx = (tx & ~psx.gpu.regs.texture_window_x_mask) | (psx.gpu.regs.texture_window_x_offset & psx.gpu.regs.texture_window_x_mask);
+                ty = (ty & ~psx.gpu.regs.texture_window_y_mask) | (psx.gpu.regs.texture_window_y_offset & psx.gpu.regs.texture_window_y_mask);
 
-            switch (psx.mmio.gpu.GPUSTAT.texture_page_colors) {
-                ._4bits => {
-                    std.debug.assert(palette.zero == 0);
+                switch (psx.mmio.gpu.GPUSTAT.texture_page_colors) {
+                    ._4bits => {
+                        std.debug.assert(palette.zero == 0);
 
-                    const index_texel_offset = vram.flat_texel_offset(page_x_offset + tx / 4, page_y_offset + ty);
-                    const index_chunk: u16 = @bitCast(psx.gpu.vram_texels[index_texel_offset]);
-                    const index: u4 = @truncate(index_chunk >> @intCast((tx % 4) * 4));
+                        const index_texel_offset = vram.flat_texel_offset(page_x_offset + tx / 4, page_y_offset + ty);
+                        const index_chunk: u16 = @bitCast(psx.gpu.vram_texels[index_texel_offset]);
+                        const index: u4 = @truncate(index_chunk >> @intCast((tx % 4) * 4));
 
-                    const clut_x = @as(u32, palette.x) * 16;
-                    const clut_y = @as(u32, palette.y);
-                    const clut_offset = vram.flat_texel_offset(clut_x, clut_y);
-                    const clut_slice = psx.gpu.vram_texels[clut_offset..][0..16];
+                        const clut_x = @as(u32, palette.x) * 16;
+                        const clut_y = @as(u32, palette.y);
+                        const clut_offset = vram.flat_texel_offset(clut_x, clut_y);
+                        const clut_slice = psx.gpu.vram_texels[clut_offset..][0..16];
 
-                    output = clut_slice[index];
-                },
-                ._8bits => {
-                    std.debug.assert(palette.zero == 0);
+                        output = clut_slice[index];
+                    },
+                    ._8bits => {
+                        std.debug.assert(palette.zero == 0);
 
-                    const index_texel_offset = vram.flat_texel_offset(page_x_offset + tx / 2, page_y_offset + ty);
-                    const index_chunk: u16 = @bitCast(psx.gpu.vram_texels[index_texel_offset]);
-                    const index: u8 = @truncate(index_chunk >> @intCast((tx % 2) * 8));
+                        const index_texel_offset = vram.flat_texel_offset(page_x_offset + tx / 2, page_y_offset + ty);
+                        const index_chunk: u16 = @bitCast(psx.gpu.vram_texels[index_texel_offset]);
+                        const index: u8 = @truncate(index_chunk >> @intCast((tx % 2) * 8));
 
-                    const clut_x = @as(u32, palette.x) * 16;
-                    const clut_y = @as(u32, palette.y);
-                    const clut_offset = vram.flat_texel_offset(clut_x, clut_y);
-                    const clut_slice = psx.gpu.vram_texels[clut_offset..][0..256];
+                        const clut_x = @as(u32, palette.x) * 16;
+                        const clut_y = @as(u32, palette.y);
+                        const clut_offset = vram.flat_texel_offset(clut_x, clut_y);
+                        const clut_slice = psx.gpu.vram_texels[clut_offset..][0..256];
 
-                    output = clut_slice[index];
-                },
-                ._15bits, ._15bits_Reserved => {
-                    const texel_offset = vram.flat_texel_offset(page_x_offset + tx, page_y_offset + ty);
+                        output = clut_slice[index];
+                    },
+                    ._15bits, ._15bits_Reserved => {
+                        const texel_offset = vram.flat_texel_offset(page_x_offset + tx, page_y_offset + ty);
 
-                    output = psx.gpu.vram_texels[texel_offset];
-                },
-            }
+                        output = psx.gpu.vram_texels[texel_offset];
+                    },
+                }
 
-            if (output == pixel_format.PackedRGB5A1{ .r = 0, .g = 0, .b = 0, .a = 0 }) {
-                continue;
-            } else if (is_semi_transparent and output.a == 1) {
-                const background = psx.gpu.vram_texels[vram_output_offset];
+                if (output == pixel_format.PackedRGB5A1{ .r = 0, .g = 0, .b = 0, .a = 0 }) {
+                    continue;
+                } else if (is_semi_transparent and output.a == 1) {
+                    const background = psx.gpu.vram_texels[vram_output_offset];
 
-                const poly = @import("draw_poly.zig");
-                psx.gpu.vram_texels[vram_output_offset] = poly.compute_alpha_blending(background, output, psx.mmio.gpu.GPUSTAT.semi_transparency_mode);
-            } else {
-                psx.gpu.vram_texels[vram_output_offset] = output;
+                    const poly = @import("draw_poly.zig");
+                    psx.gpu.vram_texels[vram_output_offset] = poly.compute_alpha_blending(background, output, psx.mmio.gpu.GPUSTAT.semi_transparency_mode);
+                } else {
+                    psx.gpu.vram_texels[vram_output_offset] = output;
+                }
             }
         }
     }
