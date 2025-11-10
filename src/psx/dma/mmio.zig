@@ -59,7 +59,7 @@ pub fn store_mmio_generic(comptime T: type, psx: *PSXState, offset: u29, value: 
                 std.debug.assert(channel.channel_control.zero_b31 == 0);
 
                 const trigger = switch (channel.channel_control.sync_mode) {
-                    .Manual => channel.channel_control.start_or_trigger == 1,
+                    .Manual => channel.channel_control.trigger == .ManualStart,
                     .Request, .LinkedList => true,
                     .Reserved => @panic("Reserved DMA sync mode"),
                 };
@@ -81,13 +81,17 @@ pub fn store_mmio_generic(comptime T: type, psx: *PSXState, offset: u29, value: 
                 std.mem.writeInt(T, type_slice, value, .little);
             },
             MMIO.Interrupt_Offset => {
-                const reset_irq_save = psx.mmio.dma.interrupt.reset_irq.raw;
+                const reset_irq_save = psx.mmio.dma.interrupt.irq_requested.raw;
 
                 // FIXME this might break if the type is not u32
                 std.mem.writeInt(T, type_slice, value, .little);
 
                 psx.mmio.dma.interrupt.zero_b6_14 = 0;
-                psx.mmio.dma.interrupt.reset_irq.raw = reset_irq_save & ~psx.mmio.dma.interrupt.reset_irq.raw;
+
+                // ACK interrupts
+                psx.mmio.dma.interrupt.irq_requested.raw = reset_irq_save & ~psx.mmio.dma.interrupt.irq_requested.raw;
+
+                execution.update_dma_irq_line(psx);
             },
             else => @panic("Invalid DMA offset"),
         }
@@ -158,7 +162,7 @@ pub const MMIO_DMA = packed struct {
     channel6: DMAChannel = .{},
     control: packed union { // DPCR - DMA Control register
         raw: u32,
-        bits: packed struct {
+        bits: packed struct(u32) {
             channel0_priority: u3, // 0-2   DMA0, MDECin  Priority      (0..7; 0=Highest, 7=Lowest)
             channel0_enable: u1, // 3     DMA0, MDECin  Master Enable (0=Disable, 1=Enable)
             channel1_priority: u3, // 4-6   DMA1, MDECout Priority      (0..7; 0=Highest, 7=Lowest)
@@ -177,27 +181,27 @@ pub const MMIO_DMA = packed struct {
             _unknown2: u1, // 31    Unknown, no effect? (R/W)
         },
     } = .{ .raw = 0x07654321 },
-    interrupt: packed struct { // DICR - DMA Interrupt register
+    interrupt: packed struct(u32) { // DICR - DMA Interrupt register
         b0_5_unknown_rw: u6 = 0, // 0-5   Unknown  (read/write-able)
         zero_b6_14: u9 = 0, // 6-14  Not used (always zero)
-        force_irq: u1 = 0, // 15    Force IRQ (sets bit31)                        (0=None, 1=Force Bit31=1)
-        enable_irq: ChannelFlagBits = .{ .raw = 0 }, // 16-22 IRQ Enable setting bit24-30 upon DMA0..DMA6    (0=None, 1=Enable)
-        enable_irq_master: u1 = 0, // 23    IRQ Enable setting bit31 when bit24-30=nonzero (0=None, 1=Enable)
-        reset_irq: ChannelFlagBits = .{ .raw = 0 }, // 24-30 IRQ Flags for DMA0..DMA6    (Write 1 to reset) (0=None, 1=IRQ)
-        is_irq_active: u1 = 0, // 31    IRQ Signal (0-to-1 triggers 1F801070h.bit3)    (0=None, 1=IRQ) (R)
+        force_irq: bool = false, // 15    Force IRQ (sets bit31)                        (0=None, 1=Force Bit31=1)
+        irq_enable: ChannelFlagBits = .{ .raw = 0 }, // 16-22 IRQ Enable setting bit24-30 upon DMA0..DMA6    (0=None, 1=Enable)
+        irq_enable_master: bool = false, // 23    IRQ Enable setting bit31 when bit24-30=nonzero (0=None, 1=Enable)
+        irq_requested: ChannelFlagBits = .{ .raw = 0 }, // 24-30 IRQ Flags for DMA0..DMA6    (Write 1 to reset) (0=None, 1=IRQ)
+        irq_line: bool = false, // 31    IRQ Signal (0-to-1 triggers 1F801070h.bit3)    (0=None, 1=IRQ) (R)
     } = .{},
     _unused: u64 = undefined,
 
     const ChannelFlagBits = packed union {
         raw: u7,
-        bits: packed struct {
-            channel0: u1,
-            channel1: u1,
-            channel2: u1,
-            channel3: u1,
-            channel4: u1,
-            channel5: u1,
-            channel6: u1,
+        bits: packed struct(u7) {
+            channel0: bool,
+            channel1: bool,
+            channel2: bool,
+            channel3: bool,
+            channel4: bool,
+            channel5: bool,
+            channel6: bool,
         },
     };
 };
@@ -262,7 +266,10 @@ pub const DMAChannel = packed struct {
             StartOrEnableOrBusy = 1,
         } = .StoppedOrCompleted,
         zero_b25_27: u3 = 0,
-        start_or_trigger: u1 = 0, //   28      Start/Trigger         (0=Normal, 1=Manual Start; use for SyncMode=0)
+        trigger: enum(u1) { //   28      Start/Trigger         (0=Normal, 1=Manual Start; use for SyncMode=0)
+            Normal = 0,
+            ManualStart = 1,
+        } = .Normal,
         unknown_rw_b29: u1 = 0, //   29      Unknown (R/W) Pause?  (0=No, 1=Pause?)     (For SyncMode=0 only?)
         unknown_rw_b30: u1 = 0, //   30      Unknown (R/W)
         zero_b31: u1 = 0, //   31      Not used              (always zero)

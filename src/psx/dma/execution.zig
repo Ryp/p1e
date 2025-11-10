@@ -4,6 +4,7 @@ const PSXState = @import("../state.zig").PSXState;
 const bus = @import("../bus.zig");
 const config = @import("../config.zig");
 
+const cpu_execution = @import("../cpu/execution.zig");
 const gpu_execution = @import("../gpu/execution.zig");
 const cdrom_execution = @import("../cdrom/execution.zig");
 
@@ -13,6 +14,8 @@ pub fn execute_dma_transfer(psx: *PSXState, channel: *dma_mmio.DMAChannel, chann
     if (config.enable_dma_debug) {
         std.debug.print("DMA Transfer {} in mode {}\n", .{ channel_index, channel.channel_control.sync_mode });
     }
+
+    channel.channel_control.trigger = .Normal;
 
     switch (channel.channel_control.sync_mode) {
         .Manual, .Request => {
@@ -85,6 +88,7 @@ pub fn execute_dma_transfer(psx: *PSXState, channel: *dma_mmio.DMAChannel, chann
         .LinkedList => {
             std.debug.assert(channel_index == .Channel2_GPU);
             std.debug.assert(channel.channel_control.transfer_direction == .FromRAM);
+            std.debug.assert(channel.channel_control.trigger == .Normal);
             std.debug.assert(channel.block_control.linked_list.zero_b0_31 == 0);
 
             var header_address: u24 = channel.base_address.offset & 0x1f_ff_fc;
@@ -116,8 +120,24 @@ pub fn execute_dma_transfer(psx: *PSXState, channel: *dma_mmio.DMAChannel, chann
     }
 
     channel.channel_control.status = .StoppedOrCompleted;
-    channel.channel_control.start_or_trigger = 0;
     // FIXME reset more fields
+
+    const irq_mask = @as(u7, 1) << @intFromEnum(channel_index);
+
+    if (psx.mmio.dma.interrupt.irq_enable.raw & irq_mask != 0) {
+        psx.mmio.dma.interrupt.irq_requested.raw |= irq_mask;
+    }
+
+    update_dma_irq_line(psx);
+}
+
+pub fn update_dma_irq_line(psx: *PSXState) void {
+    psx.mmio.dma.interrupt.irq_line = (psx.mmio.dma.interrupt.irq_enable_master and psx.mmio.dma.interrupt.irq_requested.raw != 0) or psx.mmio.dma.interrupt.force_irq;
+
+    // FIXME Only trigger on 0->1 transition
+    if (psx.mmio.dma.interrupt.irq_line) {
+        cpu_execution.request_hardware_interrupt(psx, .IRQ3_DMA);
+    }
 }
 
 fn get_transfer_word_count(channel: *dma_mmio.DMAChannel) u32 {
