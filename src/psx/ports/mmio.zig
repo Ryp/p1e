@@ -8,6 +8,10 @@ const config = @import("../config.zig");
 
 const execution = @import("execution.zig");
 
+fn get_irq7_delay_ticks(psx: *const PSXState) u32 {
+    return psx.mmio.ports.joy.baud * 8; // FIXME
+}
+
 pub fn load_mmio_generic(comptime T: type, psx: *PSXState, offset: u29) T {
     std.debug.assert(offset >= MMIO.Offset);
     std.debug.assert(offset < MMIO.OffsetEnd);
@@ -18,17 +22,26 @@ pub fn load_mmio_generic(comptime T: type, psx: *PSXState, offset: u29) T {
         MMIO.Joy_DATA_Offset => {
             std.debug.assert(T == u8); // Games can peak at next values but our FIFO is 1 item deep
 
-            if (psx.ports.joy.rx_fifo) |value| {
+            if (psx.ports.joy.rx_fifo) |fifo_value| {
+                if (config.enable_ports_debug) {
+                    std.debug.print("IOPorts DATA RECV: 0x{x}\n", .{fifo_value});
+                }
+
                 psx.ports.joy.rx_fifo = null;
-                return value;
+
+                return fifo_value;
             } else {
+                if (config.enable_ports_debug) {
+                    std.debug.print("IOPorts DATA RECV - FIFO EMPTY\n", .{});
+                }
+
                 return 0xff;
             }
         },
         MMIO.Joy_STAT_Offset => {
             psx.mmio.ports.joy.stat = .{
                 .tx_ready_started = true, // FIXME Rustation always sets them
-                .rx_fifo_not_empty = psx.ports.joy.rx_fifo != null,
+                .rx_fifo_ready = psx.ports.joy.rx_fifo != null,
                 .tx_ready_finished = true, // FIXME Rustation always sets them
                 .rx_has_parity_error = false, // We're emulating so no reason to have a parity error
                 .ack_input_level = .High, // FIXME
@@ -43,10 +56,14 @@ pub fn load_mmio_generic(comptime T: type, psx: *PSXState, offset: u29) T {
             return std.mem.readInt(T, type_slice, .little);
         },
         MMIO.Joy_MODE_Offset => {
-            unreachable;
+            @panic("Implement");
         },
         MMIO.Joy_CTRL_Offset => {
             std.debug.assert(T == u16);
+
+            if (config.enable_ports_debug) {
+                std.debug.print("JOY_CTRL: {}\n", .{psx.mmio.ports.joy.ctrl});
+            }
 
             return std.mem.readInt(T, type_slice, .little);
         },
@@ -67,8 +84,37 @@ pub fn store_mmio_generic(comptime T: type, psx: *PSXState, offset: u29, value: 
         MMIO.Joy_DATA_Offset => {
             std.debug.assert(T == u8);
 
-            // FIXME dummy response
-            psx.ports.joy.rx_fifo = 0xff;
+            // FIXME make this a bit more generic?
+            switch (psx.mmio.ports.joy.ctrl.selected_slot) {
+                .Joy1 => {
+                    const controller = &psx.ports.controller1;
+                    const response = controller.send_byte(@truncate(value));
+
+                    psx.ports.joy.rx_fifo = response;
+
+                    if (controller.has_more_to_send()) {
+                        psx.ports.pending_irq7_ticks = get_irq7_delay_ticks(psx);
+                    }
+
+                    if (config.enable_ports_debug) {
+                        std.debug.print("IOPorts Joy1 SEND: 0x{x} (queuing 0x{x:0<2} with status: {})\n", .{ value, response, controller.graph });
+                    }
+                },
+                .Joy2 => {
+                    const controller = &psx.ports.controller2;
+                    const response = controller.send_byte(@truncate(value));
+
+                    psx.ports.joy.rx_fifo = response;
+
+                    if (controller.has_more_to_send()) {
+                        psx.ports.pending_irq7_ticks = get_irq7_delay_ticks(psx);
+                    }
+
+                    if (config.enable_ports_debug) {
+                        std.debug.print("IOPorts Joy2 SEND: 0x{x} (queuing 0x{x:0<2} with status: {})\n", .{ value, response, controller.graph });
+                    }
+                },
+            }
         },
         MMIO.Joy_STAT_Offset => {
             @panic("Invalid write to Joy_STAT_Offset");
@@ -150,7 +196,7 @@ pub const MMIO = struct {
             data: u32 = undefined, // 1F801040h 1/4  JOY_DATA Joypad/Memory Card Data (R/W)
             stat: packed struct(u32) { // 1F801044h 4    JOY_STAT Joypad/Memory Card Status (R)
                 tx_ready_started: bool, //  0     TX Ready Flag 1   (1=Ready/Started)
-                rx_fifo_not_empty: bool, //  1     RX FIFO Not Empty (0=Empty, 1=Not Empty)
+                rx_fifo_ready: bool, //  1     RX FIFO Not Empty (0=Empty, 1=Not Empty)
                 tx_ready_finished: bool, //  2     TX Ready Flag 2   (1=Ready/Finished)
                 rx_has_parity_error: bool, //  3     RX Parity Error   (0=No, 1=Error; Wrong Parity, when enabled)  (sticky)
                 //  4     Unknown (zero)    (unlike SIO, this isn't RX FIFO Overrun flag)
