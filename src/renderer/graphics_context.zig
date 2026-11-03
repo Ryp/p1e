@@ -3,7 +3,7 @@ const vk = @import("vulkan");
 const c = @import("c.zig");
 const Allocator = std.mem.Allocator;
 
-const required_device_extensions = [_][*:0]const u8{vk.extensions.khr_swapchain.name};
+const required_device_extensions = [_][*:0]const u8{vk.device_extensions.khr_swapchain.name};
 
 /// There are 3 levels of bindings in vulkan-zig:
 /// - The Dispatch types (vk.BaseDispatch, vk.InstanceDispatch, vk.DeviceDispatch)
@@ -59,11 +59,11 @@ pub const GraphicsContext = struct {
 
         var extension_names: std.ArrayList([*:0]const u8) = .empty;
         defer extension_names.deinit(allocator);
-        try extension_names.append(allocator, vk.extensions.ext_debug_utils.name);
+        try extension_names.append(allocator, vk.instance_extensions.ext_debug_utils.name);
         // the following extensions are to support vulkan in mac os
         // see https://github.com/glfw/glfw/issues/2335
-        try extension_names.append(allocator, vk.extensions.khr_portability_enumeration.name);
-        try extension_names.append(allocator, vk.extensions.khr_get_physical_device_properties_2.name);
+        try extension_names.append(allocator, vk.instance_extensions.khr_portability_enumeration.name);
+        try extension_names.append(allocator, vk.instance_extensions.khr_get_physical_device_properties_2.name);
 
         var glfw_exts_count: u32 = 0;
         const glfw_exts = c.glfwGetRequiredInstanceExtensions(&glfw_exts_count);
@@ -129,17 +129,17 @@ pub const GraphicsContext = struct {
         self.frame_fence = try self.dev.createFence(&.{ .flags = .{ .signaled = true } }, null);
         errdefer self.dev.destroyFence(self.frame_fence, null);
 
-        try self.dev.setDebugUtilsObjectNameEXT(&.{ .object_type = .fence, .object_handle = @intFromEnum(self.frame_fence), .p_object_name = "Frame fence" });
+        try self.dev.setDebugUtilsObjectNameEXT(&.{ .object_type = .fence, .object_handle = @backingInt(self.frame_fence), .p_object_name = "Frame fence" });
 
         self.image_acquired = try self.dev.createSemaphore(&.{}, null);
         errdefer self.dev.destroySemaphore(self.image_acquired, null);
 
-        try self.dev.setDebugUtilsObjectNameEXT(&.{ .object_type = .semaphore, .object_handle = @intFromEnum(self.image_acquired), .p_object_name = "Image acquired" });
+        try self.dev.setDebugUtilsObjectNameEXT(&.{ .object_type = .semaphore, .object_handle = @backingInt(self.image_acquired), .p_object_name = "Image acquired" });
 
         self.render_finished = try self.dev.createSemaphore(&.{}, null);
         errdefer self.dev.destroySemaphore(self.render_finished, null);
 
-        try self.dev.setDebugUtilsObjectNameEXT(&.{ .object_type = .semaphore, .object_handle = @intFromEnum(self.render_finished), .p_object_name = "Rendering finished" });
+        try self.dev.setDebugUtilsObjectNameEXT(&.{ .object_type = .semaphore, .object_handle = @backingInt(self.render_finished), .p_object_name = "Rendering finished" });
 
         self.staging_buffer = try self.dev.createBuffer(&.{
             .size = StagingBufferSizeBytes,
@@ -245,11 +245,11 @@ fn initializeCandidate(instance: Instance, candidate: DeviceCandidate) !vk.Devic
     };
 
     return try instance.createDevice(candidate.pdev, &.{
-        .p_next = @ptrCast(&features_vk_1_3),
+        .p_next = &features_vk_1_3,
         .queue_create_info_count = queue_count,
         .p_queue_create_infos = &qci,
         .enabled_extension_count = required_device_extensions.len,
-        .pp_enabled_extension_names = @ptrCast(&required_device_extensions),
+        .pp_enabled_extension_names = &required_device_extensions,
     }, null);
 }
 

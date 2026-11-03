@@ -22,7 +22,7 @@ pub const Swapchain = struct {
     image_index: u32,
 
     pub fn init(gc: *const GraphicsContext, allocator: Allocator, extent: vk.Extent2D) !Swapchain {
-        return try initRecycle(gc, allocator, extent, .null_handle);
+        return try initRecycle(gc, allocator, extent, .null);
     }
 
     pub fn initRecycle(gc: *const GraphicsContext, allocator: Allocator, extent: vk.Extent2D, old_handle: vk.SwapchainKHR) !Swapchain {
@@ -65,7 +65,7 @@ pub const Swapchain = struct {
         }, null);
         errdefer gc.dev.destroySwapchainKHR(handle, null);
 
-        if (old_handle != .null_handle) {
+        if (old_handle != .null) {
             // Apparently, the old swapchain handle still needs to be destroyed after recreating.
             gc.dev.destroySwapchainKHR(old_handle, null);
         }
@@ -111,7 +111,7 @@ pub const Swapchain = struct {
     }
 
     pub fn acquire_next_image(self: *Swapchain, semaphore: vk.Semaphore) !PresentState {
-        const result = try self.gc.dev.acquireNextImageKHR(self.handle, std.math.maxInt(u64), semaphore, .null_handle);
+        const result = try self.gc.dev.acquireNextImageKHR(self.handle, std.math.maxInt(u64), semaphore, .null);
 
         self.image_index = result.image_index;
 

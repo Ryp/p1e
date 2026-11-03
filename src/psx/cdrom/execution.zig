@@ -183,7 +183,7 @@ pub fn execute_primary_command(psx: *PSXState, command: mmio.Command) void {
         .SetClock => unreachable,
         .GetClock => unreachable,
         .Test => {
-            const sub_command: mmio.TestSubCommand = @enumFromInt(psx.cdrom.parameter_fifo.pop() catch unreachable);
+            const sub_command: mmio.TestSubCommand = @fromBackingInt(psx.cdrom.parameter_fifo.pop() catch unreachable);
 
             if (config.enable_cdrom_debug) {
                 std.debug.print("CDROM Test command: {}\n", .{sub_command});
@@ -345,7 +345,7 @@ pub fn execute_ticks(psx: *PSXState, ticks: u32) void {
 }
 
 fn request_interrupt(psx: *PSXState, irq_mask: mmio.IRQMask) void {
-    psx.cdrom.irq_requested_mask = @intFromEnum(irq_mask); // Weird behavior of int in a mask encoding...
+    psx.cdrom.irq_requested_mask = @backingInt(irq_mask); // Weird behavior of int in a mask encoding...
 
     check_for_pending_interrupt_requests(psx);
 }
@@ -364,7 +364,7 @@ pub fn check_for_pending_interrupt_requests(psx: *PSXState) void {
         cpu_execution.request_hardware_interrupt(psx, .IRQ2_CDRom);
 
         if (config.enable_cdrom_debug) {
-            std.debug.print("CDROM Interrupt requested with mask: {}\n", .{@as(mmio.IRQMask, @enumFromInt(pending_mask))});
+            std.debug.print("CDROM Interrupt requested with mask: {}\n", .{@as(mmio.IRQMask, @fromBackingInt(pending_mask))});
         }
     }
 }

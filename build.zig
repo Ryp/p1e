@@ -1,4 +1,5 @@
 const std = @import("std");
+const Translator = @import("translate_c").Translator;
 
 pub fn build(b: *std.Build) void {
     const optimize = b.standardOptimizeOption(.{});
@@ -20,6 +21,8 @@ pub fn build(b: *std.Build) void {
     const bios_path = b.option(std.Build.LazyPath, "bios_path", "Path to SCPH1001.BIN") orelse default_bios_path;
 
     exe.root_module.addAnonymousImport("bios", .{ .root_source_file = bios_path });
+
+    const translate_c = b.dependency("translate_c", .{ .optimize = optimize });
 
     const enable_vulkan_backend = b.option(bool, "vulkan", "Enable Vulkan renderer support") orelse false;
 
@@ -49,8 +52,14 @@ pub fn build(b: *std.Build) void {
 
         exe.root_module.addImport("vulkan", vulkan);
 
-        exe.root_module.link_libc = true;
-        exe.root_module.linkSystemLibrary("glfw", .{});
+        const glfw_c: Translator = .init(translate_c, .{
+            .name = "glfw_c",
+            .c_source_file = b.path("src/renderer/glfw.h"),
+            .target = target,
+            .optimize = optimize,
+            .link_system_libs = &.{.{ .name = "glfw" }},
+        });
+        exe.root_module.addImport("glfw_c", glfw_c.mod);
 
         compile_and_embed_hlsl_shader(b, exe.root_module, "./src/renderer/shaders/triangle.vert.hlsl", .Vertex, "triangle_vs") catch unreachable;
         compile_and_embed_hlsl_shader(b, exe.root_module, "./src/renderer/shaders/triangle.frag.hlsl", .Fragment, "triangle_fs") catch unreachable;
@@ -77,7 +86,14 @@ pub fn build(b: *std.Build) void {
     });
     const sdl_lib = sdl_dep.artifact("SDL3");
 
-    exe.root_module.linkLibrary(sdl_lib);
+    const sdl_c: Translator = .init(translate_c, .{
+        .name = "sdl_c",
+        .c_source_file = b.path("src/sdl.h"),
+        .target = target,
+        .optimize = optimize,
+    });
+    sdl_c.linkLibrary(sdl_lib);
+    exe.root_module.addImport("sdl_c", sdl_c.mod);
 
     if (no_bin) {
         b.getInstallStep().dependOn(&exe.step);
@@ -87,9 +103,7 @@ pub fn build(b: *std.Build) void {
 
     const run_cmd = b.addRunArtifact(exe);
     run_cmd.step.dependOn(b.getInstallStep());
-    if (b.args) |args| {
-        run_cmd.addArgs(args);
-    }
+    run_cmd.addPassthruArgs();
 
     const run_step = b.step("run", "Run the program");
     run_step.dependOn(&run_cmd.step);
@@ -140,7 +154,7 @@ fn compile_and_embed_hlsl_shader(b: *std.Build, module: *std.Build.Module, hlsl_
     const spv_path = try std.mem.concatWithSentinel(b.allocator, u8, &[_][]const u8{ hlsl_path, ".spv" }, 0);
     defer b.allocator.free(spv_path);
 
-    const vert_spv = cmd.addOutputFileArg(spv_path);
+    const vert_spv = cmd.addOutputFileArg2(spv_path, .{});
     cmd.addFileArg(b.path(hlsl_path));
     module.addAnonymousImport(import_name, .{ .root_source_file = vert_spv });
 }

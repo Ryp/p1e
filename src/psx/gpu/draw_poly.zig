@@ -144,24 +144,24 @@ fn draw_poly_generic(psx: *PSXState, op_code: g0.DrawPolyOpCode, instance: PolyI
 // FIXCME can we do float4(float2 , float2) in zig?
 fn packed_vertex_to_f32_2(packed_vertex: g0.PackedVertexPos) f32_2 {
     return .{
-        @floatFromInt(packed_vertex.x),
-        @floatFromInt(packed_vertex.y),
+        packed_vertex.x,
+        packed_vertex.y,
     };
 }
 
 fn packed_color_to_f32_3(packed_color: PackedRGB8) f32_3 {
     return f32_3{
-        @floatFromInt(packed_color.r),
-        @floatFromInt(packed_color.g),
-        @floatFromInt(packed_color.b),
+        packed_color.r,
+        packed_color.g,
+        packed_color.b,
     } * @as(f32_3, @splat(1.0 / 255.0));
 }
 
 // FIXME not at all tested
 fn packed_tex_coord_to_f32_2(packed_tex_coord: g0.PackedTexCoord) f32_2 {
     return .{
-        @floatFromInt(packed_tex_coord.x),
-        @floatFromInt(packed_tex_coord.y),
+        packed_tex_coord.x,
+        packed_tex_coord.y,
     };
 }
 

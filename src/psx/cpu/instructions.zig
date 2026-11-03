@@ -316,14 +316,14 @@ const RawCopInstruction = packed struct {
 fn decode_cop_instruction(op_cop: RawCopInstruction) Instruction {
     if (op_cop.b25 == 0) {
         // Generic ops for all coprocessors
-        const op_copn: CopN_OpCode = @enumFromInt(op_cop.b21_24);
+        const op_copn: CopN_OpCode = @fromBackingInt(op_cop.b21_24);
 
         if (op_cop.b0_5 == 0b000000) {
             switch (op_copn) {
-                .mfc => return .{ .mfc = .{ .cpu_rs = @enumFromInt(op_cop.b16_20), .target = decode_cop_register_name(op_cop.cop_index, op_cop.b11_15) } },
-                .cfc => return .{ .cfc = .{ .cpu_rs = @enumFromInt(op_cop.b16_20), .target = decode_cop_register_name(op_cop.cop_index, op_cop.b11_15) } },
-                .mtc => return .{ .mtc = .{ .cpu_rs = @enumFromInt(op_cop.b16_20), .target = decode_cop_register_name(op_cop.cop_index, op_cop.b11_15) } },
-                .ctc => return .{ .ctc = .{ .cpu_rs = @enumFromInt(op_cop.b16_20), .target = decode_cop_register_name(op_cop.cop_index, op_cop.b11_15) } },
+                .mfc => return .{ .mfc = .{ .cpu_rs = @fromBackingInt(op_cop.b16_20), .target = decode_cop_register_name(op_cop.cop_index, op_cop.b11_15) } },
+                .cfc => return .{ .cfc = .{ .cpu_rs = @fromBackingInt(op_cop.b16_20), .target = decode_cop_register_name(op_cop.cop_index, op_cop.b11_15) } },
+                .mtc => return .{ .mtc = .{ .cpu_rs = @fromBackingInt(op_cop.b16_20), .target = decode_cop_register_name(op_cop.cop_index, op_cop.b11_15) } },
+                .ctc => return .{ .ctc = .{ .cpu_rs = @fromBackingInt(op_cop.b16_20), .target = decode_cop_register_name(op_cop.cop_index, op_cop.b11_15) } },
                 else => return .{ .invalid = undefined },
             }
         }
@@ -380,7 +380,7 @@ const CopN_OpCode = enum(u4) {
 
 fn decode_cop_register_name(cop_index: u2, register_index: u5) CopRegisterName {
     return switch (cop_index) {
-        0 => .{ .cop0 = @enumFromInt(register_index) },
+        0 => .{ .cop0 = @fromBackingInt(register_index) },
         1 => .{ .cop1 = undefined },
         2 => .{ .cop2 = register_index },
         3 => .{ .cop3 = undefined },
@@ -613,7 +613,7 @@ pub const generic_cop_load_store = struct {
 
 fn decode_generic_cop_load_store(op_u32: u32) generic_cop_load_store {
     const op: RawCopLoadStoreInstruction = @bitCast(op_u32);
-    return .{ .cop_index = op.cop_index, .rt_cop = op.rt_cop, .rs = @enumFromInt(op.rs), .imm_i16 = op.imm_i16 };
+    return .{ .cop_index = op.cop_index, .rt_cop = op.rt_cop, .rs = @fromBackingInt(op.rs), .imm_i16 = op.imm_i16 };
 }
 
 pub const mfhi = generic_rd;

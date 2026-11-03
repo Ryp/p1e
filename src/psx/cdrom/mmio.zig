@@ -68,7 +68,7 @@ pub fn load_mmio_u8(psx: *PSXState, offset: u29) u8 {
                         MMIO.CommandPort2_Offset => unreachable, // FIXME
                         MMIO.CommandPort3_Offset => {
                             const interrupt_flags = @TypeOf(bank.interrupt_flags){
-                                .response_received = @enumFromInt(@as(u3, @truncate(psx.cdrom.irq_requested_mask))),
+                                .response_received = @fromBackingInt(@truncate(psx.cdrom.irq_requested_mask)),
                                 .command_start = 0, // FIXME related to SMEN
                             };
 
@@ -134,11 +134,11 @@ pub fn store_mmio_u8(psx: *PSXState, offset: u29, value: u8) void {
 
                     switch (offset) {
                         MMIO.CommandPort1_Offset => {
-                            const command: @TypeOf(bank.command) = @enumFromInt(value);
+                            const command: @TypeOf(bank.command) = @fromBackingInt(value);
                             execution.queue_command(psx, command);
                         },
                         MMIO.CommandPort2_Offset => {
-                            const parameter: @TypeOf(bank.parameter_fifo) = @bitCast(value);
+                            const parameter: @TypeOf(bank.parameter_fifo) = value;
 
                             if (config.enable_cdrom_debug) {
                                 std.debug.print("CDROM wrote parameter: {}\n", .{parameter});
@@ -210,14 +210,14 @@ pub fn store_mmio_u8(psx: *PSXState, offset: u29, value: u8) void {
                     switch (offset) {
                         MMIO.CommandPort1_Offset => @panic("Bank 2 Port 1"),
                         MMIO.CommandPort2_Offset => {
-                            psx.cdrom.volume_cd_L_to_spu_L = @enumFromInt(value);
+                            psx.cdrom.volume_cd_L_to_spu_L = @fromBackingInt(value);
 
                             if (config.enable_cdrom_debug) {
                                 std.debug.print("Set Volume CDROM L to SPU L = {}\n", .{psx.cdrom.volume_cd_L_to_spu_L});
                             }
                         },
                         MMIO.CommandPort3_Offset => {
-                            psx.cdrom.volume_cd_L_to_spu_R = @enumFromInt(value);
+                            psx.cdrom.volume_cd_L_to_spu_R = @fromBackingInt(value);
 
                             if (config.enable_cdrom_debug) {
                                 std.debug.print("Set Volume CDROM L to SPU R = {}\n", .{psx.cdrom.volume_cd_L_to_spu_R});
@@ -231,14 +231,14 @@ pub fn store_mmio_u8(psx: *PSXState, offset: u29, value: u8) void {
 
                     switch (offset) {
                         MMIO.CommandPort1_Offset => {
-                            psx.cdrom.volume_cd_R_to_spu_R = @enumFromInt(value);
+                            psx.cdrom.volume_cd_R_to_spu_R = @fromBackingInt(value);
 
                             if (config.enable_cdrom_debug) {
                                 std.debug.print("Set Volume CDROM R to SPU R = {}\n", .{psx.cdrom.volume_cd_R_to_spu_R});
                             }
                         },
                         MMIO.CommandPort2_Offset => {
-                            psx.cdrom.volume_cd_R_to_spu_L = @enumFromInt(value);
+                            psx.cdrom.volume_cd_R_to_spu_L = @fromBackingInt(value);
 
                             if (config.enable_cdrom_debug) {
                                 std.debug.print("Set Volume CDROM R to SPU L = {}\n", .{psx.cdrom.volume_cd_R_to_spu_L});

@@ -222,7 +222,7 @@ fn load_reg_signed(registers: Registers, register_name: cpu.RegisterName) i32 {
 fn load_reg_generic(load_type: type, registers: Registers, register_name: cpu.RegisterName) load_type {
     const value = switch (register_name) {
         .zero => 0,
-        else => registers.gprs[@intFromEnum(register_name)],
+        else => registers.gprs[@backingInt(register_name)],
     };
 
     if (config.enable_debug_print) {
@@ -247,7 +247,7 @@ fn store_reg_generic(registers: *Registers, register_name: cpu.RegisterName, val
 
     switch (register_name) {
         .zero => {},
-        else => registers.gprs[@intFromEnum(register_name)] = @bitCast(value),
+        else => registers.gprs[@backingInt(register_name)] = @bitCast(value),
     }
 }
 
@@ -1072,7 +1072,7 @@ const HardwareInterruptType = enum {
 };
 
 pub fn request_hardware_interrupt(psx: *PSXState, interrupt: HardwareInterruptType) void {
-    const interrupt_bit = @as(u11, 1) << @intFromEnum(interrupt);
+    const interrupt_bit = @as(u11, 1) << @backingInt(interrupt);
 
     psx.mmio.irq.status.raw |= interrupt_bit;
 

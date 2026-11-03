@@ -64,16 +64,16 @@ pub fn load(psx: *PSXState, reader: *std.Io.Reader) !void {
     psx.cpu.regs.pc = header.pc;
     psx.cpu.regs.next_pc = header.pc + 4;
 
-    const gp_index = @intFromEnum(cpu_state.RegisterName.gp);
+    const gp_index = @backingInt(cpu_state.RegisterName.gp);
     psx.cpu.regs.gprs[gp_index] = header.gp;
 
     if (header.sp_fp_base != 0) {
         const sp_fp_offset = header.sp_fp_base + header.sp_fp_offset;
 
-        const sp_index = @intFromEnum(cpu_state.RegisterName.sp);
+        const sp_index = @backingInt(cpu_state.RegisterName.sp);
         psx.cpu.regs.gprs[sp_index] = sp_fp_offset;
 
-        const fp_index = @intFromEnum(cpu_state.RegisterName.fp);
+        const fp_index = @backingInt(cpu_state.RegisterName.fp);
         psx.cpu.regs.gprs[fp_index] = sp_fp_offset;
     }
 

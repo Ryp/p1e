@@ -212,7 +212,7 @@ pub fn main(psx: *psx_state.PSXState, allocator: std.mem.Allocator, io: std.Io) 
         .descriptor_pool = desc_pool,
         .descriptor_set_count = 1,
         .p_set_layouts = @ptrCast(&desc_set_layout),
-    }, @ptrCast(&desc_set));
+    }, &desc_set);
 
     // Update descriptor set
     const desc_buffer_info = vk.DescriptorBufferInfo{
@@ -424,7 +424,7 @@ fn record_command_buffer(
         .image_view = swapchain.swap_images[swapchain.image_index].view, // FIXME careful with the index and when it's updated!
         .image_layout = .color_attachment_optimal,
         .resolve_mode = .{},
-        .resolve_image_view = .null_handle,
+        .resolve_image_view = .null,
         .resolve_image_layout = .undefined,
         .load_op = .load,
         .store_op = .store,
@@ -565,7 +565,7 @@ fn createPipeline(
     };
 
     const gpci = vk.GraphicsPipelineCreateInfo{
-        .p_next = @ptrCast(&pipeline_rendering),
+        .p_next = &pipeline_rendering,
         .flags = .{},
         .stage_count = 2,
         .p_stages = &pssci,
@@ -579,15 +579,15 @@ fn createPipeline(
         .p_color_blend_state = &pcbsci,
         .p_dynamic_state = &pdsci,
         .layout = layout,
-        .render_pass = .null_handle,
+        .render_pass = .null,
         .subpass = 0,
-        .base_pipeline_handle = .null_handle,
+        .base_pipeline_handle = .null,
         .base_pipeline_index = -1,
     };
 
     var pipeline: vk.Pipeline = undefined;
     _ = try gc.dev.createGraphicsPipelines(
-        .null_handle,
+        .null,
         &.{gpci},
         null,
         (&pipeline)[0..1],

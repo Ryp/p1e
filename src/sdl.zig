@@ -2,9 +2,7 @@ const std = @import("std");
 
 const tracy = @import("tracy.zig");
 
-const c = @cImport({
-    @cInclude("SDL3/SDL.h");
-});
+const c = @import("sdl_c");
 
 const PSXState = @import("psx/state.zig").PSXState;
 const cpu_execution = @import("psx/cpu/execution.zig");
@@ -100,7 +98,7 @@ pub fn execute_main_loop(psx: *PSXState, allocator: std.mem.Allocator, io: std.I
             }
         }
 
-        _ = c.SDL_UpdateTexture(present_texture, null, @ptrCast(present_buffer.ptr), present_buffer_stride);
+        _ = c.SDL_UpdateTexture(present_texture, null, present_buffer.ptr, present_buffer_stride);
 
         _ = c.SDL_RenderTexture(ren, present_texture, null, null);
 

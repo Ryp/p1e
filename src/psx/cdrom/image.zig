@@ -1,6 +1,6 @@
 const std = @import("std");
 
-const native_os = @import("builtin").os.tag;
+const native_os = @import("builtin").target.os.tag;
 
 pub const CDROMImage = struct {
     file: std.Io.File,
@@ -239,7 +239,7 @@ fn msf_to_lba(minute: u32, second: u32, frame: u32) u32 {
 }
 
 fn check_cdrom_crc32(bytes: []const u8, expected_crc32: u32) !void {
-    const computed_crc32 = std.hash.crc.Crc32CdRomEdc.hash(bytes);
+    const computed_crc32 = std.hash.crc.@"CRC-32/CD-ROM-EDC".hash(bytes);
 
     if (computed_crc32 != expected_crc32) {
         std.debug.print("error: computed CRC32 0x{x} doesn't match header value 0x{x}\n", .{ computed_crc32, expected_crc32 });

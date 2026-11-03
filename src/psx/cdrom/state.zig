@@ -59,10 +59,10 @@ pub const CDROMState = struct {
     pub fn write(self: @This(), writer: anytype) !void {
         try writer.writeByte(@bitCast(self.stat));
 
-        try writer.writeByte(@intFromEnum(self.volume_cd_L_to_spu_L));
-        try writer.writeByte(@intFromEnum(self.volume_cd_R_to_spu_R));
-        try writer.writeByte(@intFromEnum(self.volume_cd_L_to_spu_R));
-        try writer.writeByte(@intFromEnum(self.volume_cd_R_to_spu_L));
+        try writer.writeByte(@backingInt(self.volume_cd_L_to_spu_L));
+        try writer.writeByte(@backingInt(self.volume_cd_R_to_spu_R));
+        try writer.writeByte(@backingInt(self.volume_cd_L_to_spu_R));
+        try writer.writeByte(@backingInt(self.volume_cd_R_to_spu_L));
 
         try writer.writeByte(self.irq_enabled_mask);
         try writer.writeByte(self.irq_requested_mask);
@@ -74,11 +74,11 @@ pub const CDROMState = struct {
         try writer.writeByte(if (self.data_requested) 1 else 0);
 
         try writer.writeInt(@TypeOf(self.read_speed_multiplier), self.read_speed_multiplier, .little);
-        try writer.writeByte(@intFromEnum(self.sector_slice_mode));
+        try writer.writeByte(@backingInt(self.sector_slice_mode));
 
         if (self.pending_primary_command) |pending_command| {
             try writer.writeByte(1);
-            try writer.writeByte(@intFromEnum(pending_command.command));
+            try writer.writeByte(@backingInt(pending_command.command));
             try writer.writeInt(@TypeOf(pending_command.ticks_remaining), pending_command.ticks_remaining, .little);
         } else {
             try writer.writeByte(0);
@@ -86,7 +86,7 @@ pub const CDROMState = struct {
 
         if (self.pending_secondary_command) |pending_command| {
             try writer.writeByte(1);
-            try writer.writeByte(@intFromEnum(pending_command.command));
+            try writer.writeByte(@backingInt(pending_command.command));
             try writer.writeInt(@TypeOf(pending_command.ticks_remaining), pending_command.ticks_remaining, .little);
         } else {
             try writer.writeByte(0);
@@ -103,10 +103,10 @@ pub const CDROMState = struct {
     pub fn read(self: *@This(), reader: anytype) !void {
         self.stat = @bitCast(try reader.takeByte());
 
-        self.volume_cd_L_to_spu_L = @enumFromInt(try reader.takeByte());
-        self.volume_cd_R_to_spu_R = @enumFromInt(try reader.takeByte());
-        self.volume_cd_L_to_spu_R = @enumFromInt(try reader.takeByte());
-        self.volume_cd_R_to_spu_L = @enumFromInt(try reader.takeByte());
+        self.volume_cd_L_to_spu_L = @fromBackingInt(try reader.takeByte());
+        self.volume_cd_R_to_spu_R = @fromBackingInt(try reader.takeByte());
+        self.volume_cd_L_to_spu_R = @fromBackingInt(try reader.takeByte());
+        self.volume_cd_R_to_spu_L = @fromBackingInt(try reader.takeByte());
 
         self.irq_enabled_mask = @intCast(try reader.takeByte());
         self.irq_requested_mask = @intCast(try reader.takeByte());
@@ -118,11 +118,11 @@ pub const CDROMState = struct {
         self.data_requested = try reader.takeByte() != 0;
 
         self.read_speed_multiplier = try reader.takeInt(@TypeOf(self.read_speed_multiplier), .little);
-        self.sector_slice_mode = @enumFromInt(try reader.takeByte());
+        self.sector_slice_mode = @fromBackingInt(@intCast(try reader.takeByte()));
 
         if (try reader.takeByte() == 1) {
             var pending_command: TimedCommand = undefined;
-            pending_command.command = @enumFromInt(try reader.takeByte());
+            pending_command.command = @fromBackingInt(try reader.takeByte());
             pending_command.ticks_remaining = try reader.takeInt(@TypeOf(pending_command.ticks_remaining), .little);
 
             self.pending_primary_command = pending_command;
@@ -132,7 +132,7 @@ pub const CDROMState = struct {
 
         if (try reader.takeByte() == 1) {
             var pending_command: TimedCommand = undefined;
-            pending_command.command = @enumFromInt(try reader.takeByte());
+            pending_command.command = @fromBackingInt(try reader.takeByte());
             pending_command.ticks_remaining = try reader.takeInt(@TypeOf(pending_command.ticks_remaining), .little);
 
             self.pending_secondary_command = pending_command;

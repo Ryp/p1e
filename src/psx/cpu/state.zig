@@ -14,7 +14,7 @@ pub const CPUState = struct {
 
         if (self.pending_load) |pending_load| {
             try writer.writeByte(1); // optional
-            try writer.writeByte(@intFromEnum(pending_load.register));
+            try writer.writeByte(@backingInt(pending_load.register));
             try writer.writeInt(@TypeOf(pending_load.value), pending_load.value, .little);
         } else {
             try writer.writeByte(0); // optional
@@ -22,15 +22,15 @@ pub const CPUState = struct {
             try writer.writeInt(u32, 0, .little); // value
         }
 
-        try writer.writeByte(@intFromEnum(self.next_branch_delay_slot));
-        try writer.writeByte(@intFromEnum(self.branch_delay_slot));
+        try writer.writeByte(@backingInt(self.next_branch_delay_slot));
+        try writer.writeByte(@backingInt(self.branch_delay_slot));
     }
 
     pub fn read(self: *@This(), reader: anytype) !void {
         try self.regs.read(reader);
 
         const has_pending_load = try reader.takeByte() != 0;
-        const register: RegisterName = @enumFromInt(try reader.takeByte());
+        const register: RegisterName = @fromBackingInt(@intCast(try reader.takeByte()));
         const value = try reader.takeInt(u32, .little);
 
         self.pending_load = if (has_pending_load)
@@ -41,8 +41,8 @@ pub const CPUState = struct {
         else
             null;
 
-        self.next_branch_delay_slot = @enumFromInt(try reader.takeByte());
-        self.branch_delay_slot = @enumFromInt(try reader.takeByte());
+        self.next_branch_delay_slot = @fromBackingInt(@intCast(try reader.takeByte()));
+        self.branch_delay_slot = @fromBackingInt(@intCast(try reader.takeByte()));
     }
 
     const BranchDelay = enum {
