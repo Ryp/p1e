@@ -7,15 +7,15 @@ const PSXState = @import("../psx/state.zig").PSXState;
 
 const sdl = @import("../sdl.zig");
 
-pub fn run(psx: *PSXState, allocator: std.mem.Allocator) !void {
+pub fn run(psx: *PSXState, allocator: std.mem.Allocator, io: std.Io) !void {
     if (build_options.enable_vulkan_backend) {
         const triangle = @import("triangle.zig");
-        try triangle.main(psx, allocator);
+        try triangle.main(psx, allocator, io);
     } else if (true) {
-        try sdl.execute_main_loop(psx, allocator);
+        try sdl.execute_main_loop(psx, allocator, io);
     } else {
         while (true) {
-            cpu_execution.step_1k_times(psx);
+            cpu_execution.step_1k_times(psx, io);
         }
     }
 }

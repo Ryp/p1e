@@ -73,7 +73,7 @@ pub const MMIO = struct {
     }
 };
 
-const MMIO_IRQ = packed struct {
+const MMIO_IRQ = packed struct(u128) {
     // 0x1f801070 I_STAT - Interrupt status register (R=Status, W=Acknowledge)
     // Status: Read I_STAT (0=No IRQ, 1=IRQ)
     // Acknowledge: Write I_STAT (0=Clear Bit, 1=No change)

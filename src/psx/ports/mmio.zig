@@ -145,7 +145,7 @@ pub const MMIO = struct {
     pub const SIO_MISC_Offset = 0x1f80105c;
     pub const SIO_BAUD_Offset = 0x1f80105e;
 
-    pub const Packed = packed struct(u256) {
+    pub const Packed = extern struct {
         joy: packed struct(u128) {
             data: u32 = undefined, // 1F801040h 1/4  JOY_DATA Joypad/Memory Card Data (R/W)
             stat: packed struct(u32) { // 1F801044h 4    JOY_STAT Joypad/Memory Card Status (R)

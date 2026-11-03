@@ -148,7 +148,7 @@ pub const MMIO = struct {
     }
 };
 
-pub const MMIO_DMA = packed struct {
+pub const MMIO_DMA = extern struct {
     channel0: DMAChannel = .{},
     channel1: DMAChannel = .{},
     channel2: DMAChannel = .{},
@@ -156,9 +156,9 @@ pub const MMIO_DMA = packed struct {
     channel4: DMAChannel = .{},
     channel5: DMAChannel = .{},
     channel6: DMAChannel = .{},
-    control: packed union { // DPCR - DMA Control register
+    control: packed union(u32) { // DPCR - DMA Control register
         raw: u32,
-        bits: packed struct {
+        bits: packed struct(u32) {
             channel0_priority: u3, // 0-2   DMA0, MDECin  Priority      (0..7; 0=Highest, 7=Lowest)
             channel0_enable: u1, // 3     DMA0, MDECin  Master Enable (0=Disable, 1=Enable)
             channel1_priority: u3, // 4-6   DMA1, MDECout Priority      (0..7; 0=Highest, 7=Lowest)
@@ -177,7 +177,7 @@ pub const MMIO_DMA = packed struct {
             _unknown2: u1, // 31    Unknown, no effect? (R/W)
         },
     } = .{ .raw = 0x07654321 },
-    interrupt: packed struct { // DICR - DMA Interrupt register
+    interrupt: packed struct(u32) { // DICR - DMA Interrupt register
         b0_5_unknown_rw: u6 = 0, // 0-5   Unknown  (read/write-able)
         zero_b6_14: u9 = 0, // 6-14  Not used (always zero)
         force_irq: u1 = 0, // 15    Force IRQ (sets bit31)                        (0=None, 1=Force Bit31=1)
@@ -202,13 +202,13 @@ pub const MMIO_DMA = packed struct {
     };
 };
 
-pub const DMAChannel = packed struct {
+pub const DMAChannel = packed struct(u128) {
     // 1F801080h+N*10h - D#_MADR - DMA base address (Channel 0..6) (R/W)
     //
     // In SyncMode=0, the hardware doesn't update the MADR registers (it will contain the start address even during and after the transfer) (unless Chopping is enabled, in that case it does update MADR, same does probably also happen when getting interrupted by a higher priority DMA channel).
     // In SyncMode=1 and SyncMode=2, the hardware does update MADR (it will contain the start address of the currently transferred block; at transfer end, it'll hold the end-address in SyncMode=1, or the 00FFFFFFh end-code in SyncMode=2)
     // Note: Address bit0-1 are writeable, but any updated current/end addresses are word-aligned with bit0-1 forced to zero.
-    base_address: packed struct {
+    base_address: packed struct(u32) {
         offset: u24 = 0, // 0-23  Memory Address where the DMA will start reading from/writing to
         zero_b24_31: u8 = 0, //   24-31 Not used (always zero)
     } = .{},

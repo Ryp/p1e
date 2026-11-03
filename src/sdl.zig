@@ -11,7 +11,7 @@ const cpu_execution = @import("psx/cpu/execution.zig");
 const pixel_format = @import("psx/gpu/pixel_format.zig");
 const vram = @import("psx/gpu/vram.zig");
 
-pub fn execute_main_loop(psx: *PSXState, allocator: std.mem.Allocator) !void {
+pub fn execute_main_loop(psx: *PSXState, allocator: std.mem.Allocator, io: std.Io) !void {
     const window_width = vram.TexelWidth;
     const window_height = vram.TexelHeight;
 
@@ -81,12 +81,12 @@ pub fn execute_main_loop(psx: *PSXState, allocator: std.mem.Allocator) !void {
             const tr_step = tracy.trace(@src());
             defer tr_step.end();
             for (0..200) |_| {
-                cpu_execution.step_1k_times(psx);
+                cpu_execution.step_1k_times(psx, io);
             }
         }
 
         // Set window title
-        _ = std.fmt.bufPrintZ(title_string, "p1e | frame time {d:.1} ms", .{frame_delta_secs * 1000.0}) catch unreachable;
+        _ = std.fmt.bufPrintSentinel(title_string, "p1e | frame time {d:.1} ms", .{frame_delta_secs * 1000.0}, 0) catch unreachable;
         _ = c.SDL_SetWindowTitle(window, title_string.ptr);
 
         // Draw frame

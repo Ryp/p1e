@@ -49,8 +49,8 @@ pub fn build(b: *std.Build) void {
 
         exe.root_module.addImport("vulkan", vulkan);
 
-        exe.linkLibC();
-        exe.linkSystemLibrary("glfw");
+        exe.root_module.link_libc = true;
+        exe.root_module.linkSystemLibrary("glfw", .{});
 
         compile_and_embed_hlsl_shader(b, exe.root_module, "./src/renderer/shaders/triangle.vert.hlsl", .Vertex, "triangle_vs") catch unreachable;
         compile_and_embed_hlsl_shader(b, exe.root_module, "./src/renderer/shaders/triangle.frag.hlsl", .Fragment, "triangle_fs") catch unreachable;
@@ -67,9 +67,8 @@ pub fn build(b: *std.Build) void {
         exe.root_module.addIncludePath(tracy_path);
         exe.root_module.addCSourceFile(.{ .file = client_cpp_path, .flags = tracy_c_flags });
 
-        exe.linkSystemLibrary("c++");
-        exe.linkLibC();
-        // exe.linkLibCpp();
+        exe.root_module.link_libcpp = true;
+        exe.root_module.link_libc = true;
     }
 
     const sdl_dep = b.dependency("sdl", .{

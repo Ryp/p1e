@@ -62,7 +62,7 @@ pub const MMIO = struct {
     }
 };
 
-const MMIO_GPU = packed struct {
+const MMIO_GPU = packed struct(u128) {
     // 1F801810h.Read  4   GPUREAD Read responses to GP0(C0h) and GP1(10h) commands
     // 1F801810h.Write 4   GP0 Send GP0 Commands/Packets (Rendering and VRAM Access)
     GPUREAD: packed struct {

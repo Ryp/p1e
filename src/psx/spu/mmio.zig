@@ -39,7 +39,7 @@ pub const MMIO = struct {
     const MMIO_MainVolume_Left = 0x1f801d80;
     const MMIO_MainVolume_Right = 0x1f801d82;
 
-    pub const Packed = packed struct {
-        _unused: u8192 = undefined,
+    pub const Packed = extern struct {
+        _unused: [SizeBytes]u8 = undefined,
     };
 };

@@ -79,9 +79,9 @@ pub const GraphicsContext = struct {
             },
             .enabled_extension_count = @intCast(extension_names.items.len),
             .pp_enabled_extension_names = extension_names.items.ptr,
-            // enumerate_portability_bit_khr to support vulkan in mac os
+            // enumerate_portability_khr to support vulkan in mac os
             // see https://github.com/glfw/glfw/issues/2335
-            .flags = .{ .enumerate_portability_bit_khr = true },
+            .flags = .{ .enumerate_portability_khr = true },
         }, null);
 
         const vki = try allocator.create(InstanceWrapper);
@@ -92,15 +92,15 @@ pub const GraphicsContext = struct {
 
         self.debug_messenger = try self.instance.createDebugUtilsMessengerEXT(&.{
             .message_severity = .{
-                //.verbose_bit_ext = true,
-                //.info_bit_ext = true,
-                .warning_bit_ext = true,
-                .error_bit_ext = true,
+                //.verbose_ext = true,
+                //.info_ext = true,
+                .warning_ext = true,
+                .error_ext = true,
             },
             .message_type = .{
-                .general_bit_ext = true,
-                .validation_bit_ext = true,
-                .performance_bit_ext = true,
+                .general_ext = true,
+                .validation_ext = true,
+                .performance_ext = true,
             },
             .pfn_user_callback = &debugUtilsMessengerCallback,
             .p_user_data = null,
@@ -126,7 +126,7 @@ pub const GraphicsContext = struct {
 
         self.mem_props = self.instance.getPhysicalDeviceMemoryProperties(self.pdev);
 
-        self.frame_fence = try self.dev.createFence(&.{ .flags = .{ .signaled_bit = true } }, null);
+        self.frame_fence = try self.dev.createFence(&.{ .flags = .{ .signaled = true } }, null);
         errdefer self.dev.destroyFence(self.frame_fence, null);
 
         try self.dev.setDebugUtilsObjectNameEXT(&.{ .object_type = .fence, .object_handle = @intFromEnum(self.frame_fence), .p_object_name = "Frame fence" });
@@ -143,14 +143,14 @@ pub const GraphicsContext = struct {
 
         self.staging_buffer = try self.dev.createBuffer(&.{
             .size = StagingBufferSizeBytes,
-            .usage = .{ .transfer_src_bit = true, .storage_buffer_bit = true },
+            .usage = .{ .transfer_src = true, .storage_buffer = true },
             .sharing_mode = .exclusive,
         }, null);
         errdefer self.dev.destroyBuffer(self.staging_buffer, null);
 
         const mem_reqs = self.dev.getBufferMemoryRequirements(self.staging_buffer);
 
-        self.staging_memory = try self.allocate(mem_reqs, .{ .host_visible_bit = true, .host_coherent_bit = true });
+        self.staging_memory = try self.allocate(mem_reqs, .{ .host_visible = true, .host_coherent = true });
         errdefer self.dev.freeMemory(self.staging_memory, null);
 
         try self.dev.bindBufferMemory(self.staging_buffer, self.staging_memory, 0);
@@ -317,7 +317,7 @@ fn allocateQueues(instance: Instance, pdev: vk.PhysicalDevice, allocator: Alloca
     for (families, 0..) |properties, i| {
         const family: u32 = @intCast(i);
 
-        if (graphics_family == null and properties.queue_flags.graphics_bit) {
+        if (graphics_family == null and properties.queue_flags.graphics) {
             graphics_family = family;
         }
 

@@ -96,11 +96,11 @@ pub const MMIO = struct {
     }
 };
 
-pub const MMIO_Timers = packed struct {
+pub const MMIO_Timers = extern struct {
     timer0: Timer = .{},
     timer1: Timer = .{},
     timer2: Timer = .{},
-    _unused: u13952 = undefined,
+    _unused: [MMIO.SizeBytes - 3 * @sizeOf(Timer)]u8 = undefined,
 
     //1F801100h+N*10h - Timer 0..2 Current Counter Value (R/W)
     //
@@ -148,7 +148,7 @@ pub const MMIO_Timers = packed struct {
     //
     //When the Target flag is set (Bit3 of the Control register), the counter increments up to (including) the selected target value, and does then restart at 0000h.
 
-    const Timer = packed struct {
+    const Timer = packed struct(u128) {
         counter: u16 = 0, // FIXME
         _garbage1: u16 = undefined,
         mode: u16 = 0, // FIXME

@@ -3,22 +3,22 @@ const std = @import("std");
 const native_os = @import("builtin").os.tag;
 
 pub const CDROMImage = struct {
-    file: std.fs.File,
+    file: std.Io.File,
     mapped_data: []align(std.heap.page_size_min) u8,
     sector_count: usize,
     sectors: []const RawSector,
 };
 
-pub fn open_cdrom_image_from_bin(cdrom_path: []const u8) !CDROMImage {
+pub fn open_cdrom_image_from_bin(io: std.Io, cdrom_path: []const u8) !CDROMImage {
     var cdrom_image: CDROMImage = undefined;
 
-    cdrom_image.file = if (std.fs.cwd().openFile(cdrom_path, .{ .mode = .read_only })) |f| f else |err| {
+    cdrom_image.file = if (std.Io.Dir.cwd().openFile(io, cdrom_path, .{ .mode = .read_only })) |f| f else |err| {
         std.debug.print("error: couldn't open CDROM file: '{s}'\n", .{cdrom_path});
         return err;
     };
-    errdefer cdrom_image.file.close();
+    errdefer cdrom_image.file.close(io);
 
-    const size_bytes = try cdrom_image.file.getEndPos();
+    const size_bytes = try cdrom_image.file.length(io);
 
     if (size_bytes % RawSectorSizeBytes != 0) {
         std.debug.print("error: loading '{s}': file size {} doesn't align on sector size\n", .{ cdrom_path, size_bytes });
@@ -29,7 +29,7 @@ pub fn open_cdrom_image_from_bin(cdrom_path: []const u8) !CDROMImage {
 
     switch (native_os) {
         .linux, .macos => {
-            cdrom_image.mapped_data = try std.posix.mmap(null, size_bytes, std.posix.PROT.READ, .{ .TYPE = .PRIVATE }, cdrom_image.file.handle, 0);
+            cdrom_image.mapped_data = try std.posix.mmap(null, size_bytes, .{ .READ = true }, .{ .TYPE = .PRIVATE }, cdrom_image.file.handle, 0);
             errdefer std.posix.munmap(cdrom_image.mapped_data);
         },
         .windows => @panic("Unsupported OS"),
@@ -112,7 +112,7 @@ pub fn open_cdrom_image_from_bin(cdrom_path: []const u8) !CDROMImage {
     return cdrom_image;
 }
 
-pub fn close_cdrom_image(cdrom_image: CDROMImage) void {
+pub fn close_cdrom_image(io: std.Io, cdrom_image: CDROMImage) void {
     switch (native_os) {
         .linux, .macos => {
             std.posix.munmap(cdrom_image.mapped_data);
@@ -121,7 +121,7 @@ pub fn close_cdrom_image(cdrom_image: CDROMImage) void {
         else => @panic("Unsupported OS"),
     }
 
-    cdrom_image.file.close();
+    cdrom_image.file.close(io);
 }
 
 pub const RawSectorSizeBytes = 2352;
@@ -249,10 +249,5 @@ fn check_cdrom_crc32(bytes: []const u8, expected_crc32: u32) !void {
 
 // Helper for defining large backing types in bytes instead of bits.
 fn u_bytes(bytes: comptime_int) type {
-    return @Type(.{
-        .int = .{
-            .signedness = .unsigned,
-            .bits = 8 * bytes,
-        },
-    });
+    return @Int(.unsigned, 8 * bytes);
 }

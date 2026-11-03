@@ -10,30 +10,18 @@ const loop = @import("renderer/loop.zig");
 
 const clap = @import("clap");
 const tracy = @import("tracy.zig");
-const builtin = @import("builtin");
 
-var debug_allocator: std.heap.DebugAllocator(.{}) = .init;
-var gpa_allocator = std.heap.GeneralPurposeAllocator(.{}){};
-
-pub fn main() !void {
-    const gpa, const is_debug = switch (builtin.mode) {
-        .Debug, .ReleaseSafe => .{ debug_allocator.allocator(), true },
-        .ReleaseFast, .ReleaseSmall => .{ gpa_allocator.allocator(), false },
-    };
-
-    defer if (is_debug) {
-        _ = debug_allocator.deinit();
-    };
+pub fn main(init: std.process.Init) !void {
+    var allocator = init.gpa;
 
     if (tracy.enable_allocation) {
-        var gpa_tracy = tracy.tracyAllocator(gpa);
-        return main_with_allocator(gpa_tracy.allocator());
-    } else {
-        return main_with_allocator(gpa);
+        var gpa_tracy = tracy.tracyAllocator(init.gpa);
+        allocator = gpa_tracy.allocator();
     }
-}
 
-pub fn main_with_allocator(allocator: std.mem.Allocator) !void {
+    const io = init.io;
+    const args = init.minimal.args;
+
     const tr = tracy.trace(@src());
     defer tr.end();
 
@@ -60,18 +48,18 @@ pub fn main_with_allocator(allocator: std.mem.Allocator) !void {
     // This is optional. You can also pass `.{}` to `clap.parse` if you don't
     // care about the extra information `Diagnostics` provides.
     var diag = clap.Diagnostic{};
-    var res = clap.parse(clap.Help, &params, clap.parsers.default, .{
+    var res = clap.parse(clap.Help, &params, clap.parsers.default, args, .{
         .diagnostic = &diag,
         .allocator = allocator,
     }) catch |err| {
         // Report useful error and exit.
-        try diag.reportToFile(.stderr(), err);
+        try diag.reportToFile(io, .stderr(), err);
         return err;
     };
     defer res.deinit();
 
     if (res.args.help != 0) {
-        return clap.usageToFile(.stdout(), clap.Help, &params);
+        return clap.usageToFile(io, .stdout(), clap.Help, &params);
     }
 
     psx.load_cdrom_path = res.args.@"load-cdrom-path";
@@ -89,14 +77,14 @@ pub fn main_with_allocator(allocator: std.mem.Allocator) !void {
     }
 
     if (psx.load_state_path) |load_state_path| {
-        var exe_file = if (std.fs.cwd().openFile(load_state_path, .{})) |f| f else |err| {
+        var exe_file = if (std.Io.Dir.cwd().openFile(io, load_state_path, .{})) |f| f else |err| {
             std.debug.print("Failed to open save state file '{s}': {}\n", .{ load_state_path, err });
             return err;
         };
-        defer exe_file.close();
+        defer exe_file.close(io);
 
         var reader_buffer: [std.heap.page_size_min]u8 = undefined;
-        var reader = exe_file.reader(&reader_buffer);
+        var reader = exe_file.reader(io, &reader_buffer);
 
         save_state.load(&psx, &reader.interface) catch |err| {
             std.debug.print("Failed to load save state file '{s}': {}\n", .{ load_state_path, err });
@@ -108,14 +96,14 @@ pub fn main_with_allocator(allocator: std.mem.Allocator) !void {
 
     // FIXME Improve CDROM loading
     if (psx.load_cdrom_path) |cdrom_path| {
-        psx.cdrom.image = try cdrom.open_cdrom_image_from_bin(cdrom_path);
+        psx.cdrom.image = try cdrom.open_cdrom_image_from_bin(io, cdrom_path);
     }
     psx.cdrom.stat.is_shell_open = psx.cdrom.image == null;
 
-    try loop.run(&psx, allocator);
+    try loop.run(&psx, allocator, io);
 
     if (psx.cdrom.image) |cdrom_image| {
-        cdrom.close_cdrom_image(cdrom_image);
+        cdrom.close_cdrom_image(io, cdrom_image);
     }
 }
 

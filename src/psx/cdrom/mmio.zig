@@ -282,7 +282,7 @@ pub const MMIO = struct {
     }
 };
 
-const MMIO_CDROM = packed struct {
+const MMIO_CDROM = packed struct(u128) {
     index_status: packed struct(u8) { // 1F801800h - Index/Status Register (Bit0-1 R/W)
         index: u2 = undefined, // FIXME initial value 0-1 Index   Port 1F801801h-1F801803h index (0..3 = Index0..Index3)   (R/W)
         status: packed struct(u6) {

@@ -4,7 +4,7 @@ const PSXState = @import("state.zig").PSXState;
 
 const bus = @import("bus.zig");
 
-pub const MMIO = packed struct {
+pub const MMIO = extern struct {
     memory_control1: memory_control1.MMIO.Packed = .{},
     ports: ports.MMIO.Packed = .{},
     memory_control2: memory_control2.MMIO.Packed = .{},
@@ -38,8 +38,8 @@ pub const MDEC_MMIO = struct {
         std.debug.assert(@sizeOf(Packed) == SizeBytes);
     }
 
-    pub const Packed = packed struct {
-        _unused: u7936 = undefined,
+    pub const Packed = extern struct {
+        _unused: [SizeBytes]u8 = undefined,
     };
 };
 
@@ -55,11 +55,8 @@ pub const Expansion2_MMIO = struct {
 
     pub const UnknownDebug_Offset = 0x1f802041;
 
-    pub const Packed = packed struct {
-        // FIXME Abusing the compiler for 8 bit here, more and we hit the limit.
-        // Really it should be 32768.
-        // The std.Io.Reader/Writer APIs work with slices of u8 so I had to round that up!
-        _unused: u32760 = undefined,
+    pub const Packed = extern struct {
+        _unused: [SizeBytes]u8 = undefined,
     };
 };
 

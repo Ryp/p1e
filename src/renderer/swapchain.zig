@@ -53,12 +53,12 @@ pub const Swapchain = struct {
             .image_color_space = surface_format.color_space,
             .image_extent = actual_extent,
             .image_array_layers = 1,
-            .image_usage = .{ .color_attachment_bit = true, .transfer_dst_bit = true },
+            .image_usage = .{ .color_attachment = true, .transfer_dst = true },
             .image_sharing_mode = sharing_mode,
             .queue_family_index_count = qfi.len,
             .p_queue_family_indices = &qfi,
             .pre_transform = caps.current_transform,
-            .composite_alpha = .{ .opaque_bit_khr = true },
+            .composite_alpha = .{ .opaque_khr = true },
             .present_mode = present_mode,
             .clipped = .true,
             .old_swapchain = old_handle,
@@ -134,7 +134,7 @@ const SwapImage = struct {
             .format = format,
             .components = .{ .r = .identity, .g = .identity, .b = .identity, .a = .identity },
             .subresource_range = .{
-                .aspect_mask = .{ .color_bit = true },
+                .aspect_mask = .{ .color = true },
                 .base_mip_level = 0,
                 .level_count = 1,
                 .base_array_layer = 0,
@@ -200,7 +200,7 @@ fn findPresentMode(gc: *const GraphicsContext, allocator: Allocator) !vk.Present
     };
 
     for (preferred) |mode| {
-        if (std.mem.indexOfScalar(vk.PresentModeKHR, present_modes, mode) != null) {
+        if (std.mem.findScalar(vk.PresentModeKHR, present_modes, mode) != null) {
             return mode;
         }
     }

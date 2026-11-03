@@ -15,20 +15,20 @@ const GPUTextureAccess = struct {
 };
 
 const swapchain_access_initial = GPUTextureAccess{
-    .stage_mask = .{ .bottom_of_pipe_bit = true },
+    .stage_mask = .{ .bottom_of_pipe = true },
     .access_mask = .{},
     .image_layout = .undefined,
 };
 
 const swapchain_access_present = GPUTextureAccess{
-    .stage_mask = .{ .bottom_of_pipe_bit = true },
+    .stage_mask = .{ .bottom_of_pipe = true },
     .access_mask = .{},
     .image_layout = .present_src_khr,
 };
 
 const swapchain_access_render = GPUTextureAccess{
-    .stage_mask = .{ .color_attachment_output_bit = true },
-    .access_mask = .{ .color_attachment_write_bit = true },
+    .stage_mask = .{ .color_attachment_output = true },
+    .access_mask = .{ .color_attachment_write = true },
     .image_layout = .attachment_optimal,
 };
 
@@ -48,7 +48,7 @@ const GPUTextureSubresource = struct {
 
 fn default_texture_subresource_one_color_mip(mip_index: u32, layer_index: u32) GPUTextureSubresource {
     return .{
-        .aspect = .{ .color_bit = true },
+        .aspect = .{ .color = true },
         .mip_offset = mip_index,
         .mip_count = 1,
         .layer_offset = layer_index,
@@ -104,7 +104,7 @@ const psx_state = @import("../psx/state.zig");
 const cpu_execution = @import("../psx/cpu/execution.zig");
 const gpu_execution = @import("../psx/gpu/execution.zig");
 
-pub fn main(psx: *psx_state.PSXState, allocator: std.mem.Allocator) !void {
+pub fn main(psx: *psx_state.PSXState, allocator: std.mem.Allocator, io: std.Io) !void {
     // var renderer = try create_renderer(allocator, "PSX Emulator");
     // defer destroy_renderer(&renderer, allocator);
     const app_name = "PSX Emulator";
@@ -143,7 +143,7 @@ pub fn main(psx: *psx_state.PSXState, allocator: std.mem.Allocator) !void {
             .binding = 0,
             .descriptor_type = .storage_buffer,
             .descriptor_count = 1,
-            .stage_flags = .{ .vertex_bit = true },
+            .stage_flags = .{ .vertex = true },
             .p_immutable_samplers = null,
         }},
     }, null);
@@ -175,7 +175,7 @@ pub fn main(psx: *psx_state.PSXState, allocator: std.mem.Allocator) !void {
 
     // FIXME resettable flag?
     const pool = try gc.dev.createCommandPool(&.{
-        .flags = .{ .reset_command_buffer_bit = true },
+        .flags = .{ .reset_command_buffer = true },
         .queue_family_index = gc.graphics_queue.family,
     }, null);
     defer gc.dev.destroyCommandPool(pool, null);
@@ -187,11 +187,11 @@ pub fn main(psx: *psx_state.PSXState, allocator: std.mem.Allocator) !void {
         .level = .primary,
         .command_buffer_count = 1,
     }, @ptrCast(&cmdbuf));
-    defer gc.dev.freeCommandBuffers(pool, 1, @ptrCast(&cmdbuf));
+    defer gc.dev.freeCommandBuffers(pool, &.{cmdbuf});
 
     const storage_buffer = try gc.dev.createBuffer(&.{
         .size = GraphicsContext.StagingBufferSizeBytes,
-        .usage = .{ .transfer_dst_bit = true, .storage_buffer_bit = true },
+        .usage = .{ .transfer_dst = true, .storage_buffer = true },
         .sharing_mode = .exclusive,
     }, null);
     defer gc.dev.destroyBuffer(storage_buffer, null);
@@ -199,8 +199,8 @@ pub fn main(psx: *psx_state.PSXState, allocator: std.mem.Allocator) !void {
     const mem_reqs = gc.dev.getBufferMemoryRequirements(storage_buffer);
 
     const storage_buffer_memory = try gc.allocate(mem_reqs, .{
-        // .device_local_bit = true,
-        .host_coherent_bit = true,
+        // .device_local = true,
+        .host_coherent = true,
     });
     defer gc.dev.freeMemory(storage_buffer_memory, null);
 
@@ -232,7 +232,7 @@ pub fn main(psx: *psx_state.PSXState, allocator: std.mem.Allocator) !void {
         .p_texel_buffer_view = undefined,
     }};
 
-    gc.dev.updateDescriptorSets(1, @ptrCast(&desc_writes), 0, null);
+    gc.dev.updateDescriptorSets(&desc_writes, null);
 
     var w: c_int = undefined;
     var h: c_int = undefined;
@@ -247,13 +247,13 @@ pub fn main(psx: *psx_state.PSXState, allocator: std.mem.Allocator) !void {
         c.glfwGetFramebufferSize(window, &w, &h);
 
         while (!psx.gpu.backend.pending_draw) {
-            cpu_execution.step_1k_times(psx);
+            cpu_execution.step_1k_times(psx, io);
         }
 
-        const fence_wait_result = try gc.dev.waitForFences(1, @ptrCast(&gc.frame_fence), .true, std.math.maxInt(u64));
+        const fence_wait_result = try gc.dev.waitForFences(&.{gc.frame_fence}, .true, std.math.maxInt(u64));
         std.debug.assert(fence_wait_result == .success);
 
-        try gc.dev.resetFences(1, @ptrCast(&gc.frame_fence));
+        try gc.dev.resetFences(&.{gc.frame_fence});
 
         if (should_recreate_swapchain) {
             try swapchain.recreate(extent);
@@ -314,14 +314,14 @@ pub fn main(psx: *psx_state.PSXState, allocator: std.mem.Allocator) !void {
         // try cmdbuf.copyBuffer(storage_buffer, gc.staging_buffer, 1, @ptrCast(&region));
 
         //  FIXME
-        gc.dev.cmdBindDescriptorSets(cmdbuf, .graphics, pipeline_layout, 0, 1, @ptrCast(&desc_set), 0, null);
+        gc.dev.cmdBindDescriptorSets(cmdbuf, .graphics, pipeline_layout, 0, &desc_set, null);
 
         try record_command_buffer(&gc, cmdbuf, &swapchain, pipeline, vertex_count);
 
         try gc.dev.endCommandBuffer(cmdbuf);
 
-        const wait_stage = [_]vk.PipelineStageFlags{.{ .bottom_of_pipe_bit = true }};
-        try gc.dev.queueSubmit(gc.graphics_queue.handle, 1, &[_]vk.SubmitInfo{.{
+        const wait_stage = [_]vk.PipelineStageFlags{.{ .bottom_of_pipe = true }};
+        try gc.dev.queueSubmit(gc.graphics_queue.handle, &[_]vk.SubmitInfo{.{
             .wait_semaphore_count = 1,
             .p_wait_semaphores = @ptrCast(&gc.image_acquired),
             .p_wait_dst_stage_mask = &wait_stage,
@@ -348,7 +348,7 @@ pub fn main(psx: *psx_state.PSXState, allocator: std.mem.Allocator) !void {
         gpu_execution.consume_pending_draw(psx);
     }
 
-    const result = try gc.dev.waitForFences(1, @ptrCast(&gc.frame_fence), .true, std.math.maxInt(u64));
+    const result = try gc.dev.waitForFences(&.{gc.frame_fence}, .true, std.math.maxInt(u64));
     std.debug.assert(result == .success);
 
     try gc.dev.deviceWaitIdle();
@@ -411,8 +411,8 @@ fn record_command_buffer(
         .extent = swapchain.extent,
     };
 
-    gc.dev.cmdSetViewport(cmdbuf, 0, 1, @ptrCast(&viewport));
-    gc.dev.cmdSetScissor(cmdbuf, 0, 1, @ptrCast(&scissor));
+    gc.dev.cmdSetViewport(cmdbuf, 0, &.{viewport});
+    gc.dev.cmdSetScissor(cmdbuf, 0, &.{scissor});
 
     // This needs to be a separate definition - see https://github.com/ziglang/zig/issues/7627.
     const render_area = vk.Rect2D{
@@ -479,12 +479,12 @@ fn createPipeline(
 
     const pssci = [_]vk.PipelineShaderStageCreateInfo{
         .{
-            .stage = .{ .vertex_bit = true },
+            .stage = .{ .vertex = true },
             .module = vert,
             .p_name = "main",
         },
         .{
-            .stage = .{ .fragment_bit = true },
+            .stage = .{ .fragment = true },
             .module = frag,
             .p_name = "main",
         },
@@ -513,7 +513,7 @@ fn createPipeline(
         .depth_clamp_enable = .false,
         .rasterizer_discard_enable = .false,
         .polygon_mode = .fill,
-        .cull_mode = .{ .back_bit = false },
+        .cull_mode = .{ .back = false },
         .front_face = .clockwise,
         .depth_bias_enable = .false,
         .depth_bias_constant_factor = 0,
@@ -523,7 +523,7 @@ fn createPipeline(
     };
 
     const pmsci = vk.PipelineMultisampleStateCreateInfo{
-        .rasterization_samples = .{ .@"1_bit" = true },
+        .rasterization_samples = .{ .@"1" = true },
         .sample_shading_enable = .false,
         .min_sample_shading = 1,
         .alpha_to_coverage_enable = .false,
@@ -538,7 +538,7 @@ fn createPipeline(
         .src_alpha_blend_factor = .one,
         .dst_alpha_blend_factor = .zero,
         .alpha_blend_op = .add,
-        .color_write_mask = .{ .r_bit = true, .g_bit = true, .b_bit = true, .a_bit = true },
+        .color_write_mask = .{ .r = true, .g = true, .b = true, .a = true },
     };
 
     const pcbsci = vk.PipelineColorBlendStateCreateInfo{
@@ -588,10 +588,9 @@ fn createPipeline(
     var pipeline: vk.Pipeline = undefined;
     _ = try gc.dev.createGraphicsPipelines(
         .null_handle,
-        1,
-        @ptrCast(&gpci),
+        &.{gpci},
         null,
-        @ptrCast(&pipeline),
+        (&pipeline)[0..1],
     );
     return pipeline;
 }

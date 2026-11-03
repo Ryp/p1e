@@ -73,7 +73,7 @@ pub const MMIO = struct {
     const Expansion2DelaySize_Offset = 0x1f80101c;
     const ComDelay_Offset = 0x1f801020;
 
-    pub const Packed = packed struct {
+    pub const Packed = extern struct {
         expansion1_base_address: u32 = undefined,
         expansion2_base_address: u32 = undefined,
         expansion1_delay_size: DelaySize = undefined,
@@ -84,7 +84,7 @@ pub const MMIO = struct {
         exp2_delay_size: DelaySize = undefined,
         com_delay: u32 = undefined,
 
-        _unused: u224 = undefined,
+        _unused: [28]u8 = undefined,
 
         const DelaySize = packed struct(u32) {
             unknown_b0_3: u4, // 0-3   Unknown (R/W)

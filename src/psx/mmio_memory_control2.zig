@@ -50,7 +50,7 @@ pub const MMIO = struct {
 
     const RamSize_Offset = 0x1f801060;
 
-    pub const Packed = packed struct {
+    pub const Packed = packed struct(u128) {
         ram_size: RamSize = .{},
         _unused: u112 = undefined,
 

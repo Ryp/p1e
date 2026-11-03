@@ -16,11 +16,11 @@ const save_state = @import("../save_state.zig");
 const instructions = @import("instructions.zig");
 const debug = @import("debug.zig");
 
-pub fn step_1k_times(psx: *PSXState) void {
+pub fn step_1k_times(psx: *PSXState, io: std.Io) void {
     const steps = 1000;
 
     for (0..steps) |_| {
-        step(psx);
+        step(psx, io);
     }
 
     // FIXME super rough but good enough to get the shell working without missing IRQ messages.
@@ -30,7 +30,7 @@ pub fn step_1k_times(psx: *PSXState) void {
     gpu.execute_ticks(psx, ticks);
 }
 
-fn step(psx: *PSXState) void {
+fn step(psx: *PSXState, io: std.Io) void {
     defer psx.step_index += 1;
 
     if (psx.skip_shell_execution) {
@@ -43,14 +43,14 @@ fn step(psx: *PSXState) void {
         }
     } else if (psx.load_exe_path) |sideloaded_exe_path| {
         if (psx.cpu.regs.pc == exe_sideloading.DefaultSideLoadingPC) {
-            var exe_file = if (std.fs.cwd().openFile(sideloaded_exe_path, .{})) |f| f else |err| {
+            var exe_file = if (std.Io.Dir.cwd().openFile(io, sideloaded_exe_path, .{})) |f| f else |err| {
                 std.debug.print("Failed to open exe file: {}\n", .{err});
                 return;
             };
-            defer exe_file.close();
+            defer exe_file.close(io);
 
             var reader_buffer: [std.heap.page_size_min]u8 = undefined;
-            var reader = exe_file.reader(&reader_buffer);
+            var reader = exe_file.reader(io, &reader_buffer);
 
             exe_sideloading.load(psx, &reader.interface) catch |err| {
                 std.debug.print("Failed to load exe: {}\n", .{err});
@@ -62,7 +62,7 @@ fn step(psx: *PSXState) void {
         std.debug.assert(psx.save_state_after_ticks != null);
 
         if (psx.step_index == psx.save_state_after_ticks.?) {
-            var save_state_file = if (std.fs.cwd().createFile(save_state_path, .{
+            var save_state_file = if (std.Io.Dir.cwd().createFile(io, save_state_path, .{
                 .read = true,
                 .truncate = true,
                 .exclusive = false, // Set to true will ensure this file is created by us
@@ -70,10 +70,10 @@ fn step(psx: *PSXState) void {
                 std.debug.print("Failed to create save state file: {}\n", .{err});
                 return;
             };
-            defer save_state_file.close();
+            defer save_state_file.close(io);
 
             var writer_buffer: [std.heap.page_size_min]u8 = undefined;
-            var writer = save_state_file.writer(&writer_buffer);
+            var writer = save_state_file.writer(io, &writer_buffer);
             const generic_writer = &writer.interface;
 
             save_state.save(psx.*, generic_writer) catch |err| {
@@ -97,7 +97,7 @@ fn step(psx: *PSXState) void {
             const char: u8 = @truncate(load_reg(psx.cpu.regs, .a0));
 
             var writer_buffer: [std.heap.page_size_min]u8 = undefined;
-            var writer = std.fs.File.stdout().writer(&writer_buffer);
+            var writer = std.Io.File.stdout().writer(io, &writer_buffer);
             const generic_writer = &writer.interface;
 
             generic_writer.print("{c}", .{char}) catch |err| {
