@@ -55,8 +55,8 @@ fn load_generic(comptime T: type, psx: *PSXState, address: Address) T {
     const type_bits = type_info.int.bits;
     const type_bytes = type_bits / 8;
 
-    std.debug.assert(type_info.int.signedness == .unsigned);
-    std.debug.assert(type_bits % 8 == 0);
+    comptime std.debug.assert(type_info.int.signedness == .unsigned);
+    comptime std.debug.assert(type_bits % 8 == 0);
 
     if (config.enable_debug_print) {
         std.debug.print("load addr: 0x{x:0>8}\n", .{@as(u32, @bitCast(address))});
@@ -158,8 +158,8 @@ fn store_generic(comptime T: type, psx: *PSXState, address: Address, value: T) v
     const type_bits = type_info.int.bits;
     const type_bytes = type_bits / 8;
 
-    std.debug.assert(type_info.int.signedness == .unsigned);
-    std.debug.assert(type_bits % 8 == 0);
+    comptime std.debug.assert(type_info.int.signedness == .unsigned);
+    comptime std.debug.assert(type_bits % 8 == 0);
 
     if (config.enable_debug_print) {
         std.debug.print("store addr: 0x{x:0>8} with ", .{@as(u32, @bitCast(address))});
