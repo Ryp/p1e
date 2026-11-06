@@ -14,8 +14,10 @@ pub fn execute_dma_transfer(psx: *PSXState, channel: *dma_mmio.DMAChannel, chann
         std.debug.print("DMA Transfer {} in mode {}\n", .{ channel_index, channel.channel_control.sync_mode });
     }
 
+    channel.channel_control.force_start = false;
+
     switch (channel.channel_control.sync_mode) {
-        .Manual, .Request => {
+        .Burst, .Slice => {
             var address = channel.base_address.offset;
             var word_count_left = get_transfer_word_count(channel);
 
@@ -85,6 +87,7 @@ pub fn execute_dma_transfer(psx: *PSXState, channel: *dma_mmio.DMAChannel, chann
         .LinkedList => {
             std.debug.assert(channel_index == .Channel2_GPU);
             std.debug.assert(channel.channel_control.transfer_direction == .FromRAM);
+            std.debug.assert(!channel.channel_control.force_start);
             std.debug.assert(channel.block_control.linked_list.zero_b0_31 == 0);
 
             var header_address: u24 = channel.base_address.offset & 0x1f_ff_fc;
@@ -116,14 +119,13 @@ pub fn execute_dma_transfer(psx: *PSXState, channel: *dma_mmio.DMAChannel, chann
     }
 
     channel.channel_control.status = .StoppedOrCompleted;
-    channel.channel_control.start_or_trigger = 0;
     // FIXME reset more fields
 }
 
 fn get_transfer_word_count(channel: *dma_mmio.DMAChannel) u32 {
     return switch (channel.channel_control.sync_mode) {
-        .Manual => channel.block_control.manual.word_count,
-        .Request => channel.block_control.request.block_count * channel.block_control.request.block_size,
+        .Burst => channel.block_control.manual.word_count,
+        .Slice => channel.block_control.request.block_count * channel.block_control.request.block_size,
         .LinkedList, .Reserved => unreachable,
     };
 }

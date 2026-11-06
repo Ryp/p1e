@@ -58,19 +58,20 @@ pub fn store_mmio_generic(comptime T: type, psx: *PSXState, offset: u29, value: 
                 std.debug.assert(channel.channel_control.zero_b25_27 == 0);
                 std.debug.assert(channel.channel_control.zero_b31 == 0);
 
-                const trigger = switch (channel.channel_control.sync_mode) {
-                    .Manual => channel.channel_control.start_or_trigger == 1,
-                    .Request, .LinkedList => true,
-                    .Reserved => @panic("Reserved DMA sync mode"),
-                };
-
-                // This still happens on a regular shell boot.
-                if (channel.channel_control.sync_mode == .Manual and channel.channel_control.start_or_trigger == 0) {
-                    @panic("DMA Manual mode write without trigger"); // FIXME I think I don't support this yet
-                }
-
-                if (channel.channel_control.status == .StartOrEnableOrBusy and trigger) {
-                    execution.execute_dma_transfer(psx, channel, dma_offset.channel_index);
+                // DREQ is not handled ATM, we just make full transfers without waiting
+                if (channel.channel_control.status == .StartOrEnableOrBusy) {
+                    switch (channel.channel_control.sync_mode) {
+                        .Burst => {
+                            std.debug.assert(channel.channel_control.force_start == true);
+                            if (channel.channel_control.force_start) {
+                                execution.execute_dma_transfer(psx, channel, dma_offset.channel_index);
+                            }
+                        },
+                        .Slice, .LinkedList => {
+                            execution.execute_dma_transfer(psx, channel, dma_offset.channel_index);
+                        },
+                        .Reserved => @panic("Reserved DMA sync mode"),
+                    }
                 }
             },
             .Invalid => @panic("Invalid DMA Register"),
@@ -173,31 +174,34 @@ pub const MMIO_DMA = extern struct {
             channel5_enable: u1, // 23    DMA5, PIO     Master Enable (0=Disable, 1=Enable)
             channel6_priority: u3, // 24-26 DMA6, OTC     Priority      (0..7; 0=Highest, 7=Lowest)
             channel6_enable: u1, // 27    DMA6, OTC     Master Enable (0=Disable, 1=Enable)
-            _unknown1: u3, // 28-30 Unknown, Priority Offset or so? (R/W)
-            _unknown2: u1, // 31    Unknown, no effect? (R/W)
+            _unknown1: u3, // 28-30 CPU memory access priority  (0..7; 0=Highest, 7=Lowest)
+            _unknown2: u1, // 31    No effect, should be CPU memory access enable (R/W)
         },
     } = .{ .raw = 0x07654321 },
     interrupt: packed struct(u32) { // DICR - DMA Interrupt register
-        b0_5_unknown_rw: u6 = 0, // 0-5   Unknown  (read/write-able)
-        zero_b6_14: u9 = 0, // 6-14  Not used (always zero)
-        force_irq: u1 = 0, // 15    Force IRQ (sets bit31)                        (0=None, 1=Force Bit31=1)
-        enable_irq: ChannelFlagBits = .{ .raw = 0 }, // 16-22 IRQ Enable setting bit24-30 upon DMA0..DMA6    (0=None, 1=Enable)
-        enable_irq_master: u1 = 0, // 23    IRQ Enable setting bit31 when bit24-30=nonzero (0=None, 1=Enable)
-        reset_irq: ChannelFlagBits = .{ .raw = 0 }, // 24-30 IRQ Flags for DMA0..DMA6    (Write 1 to reset) (0=None, 1=IRQ)
-        is_irq_active: u1 = 0, // 31    IRQ Signal (0-to-1 triggers 1F801070h.bit3)    (0=None, 1=IRQ) (R)
+        b0_5_unknown_rw: u6 = 0, // 0-5   Controls channel 0-5 completion interrupts in bits 24-29 (0=only on entire transfer completion, 1=on every slice and linked-list transfer; no effect if masked by bits 16-22)
+        zero_b6_14: u9 = 0, // 6     Same as 0-5 for channel 6 (bit 30); 7-14  Unused
+        force_irq: bool = false, // 15    Bus error flag. Raised when transferring to/from an address outside of RAM. Forces bit 31. (R/W)
+        irq_enable: ChannelFlagBits = .{ .raw = 0 }, // 16-22 IRQ Enable setting bit24-30 upon DMA0..DMA6    (0=None, 1=Enable)
+        irq_enable_master: bool = false, // 23    IRQ Enable setting bit31 when bit24-30=nonzero (0=None, 1=Enable)
+        irq_requested: ChannelFlagBits = .{ .raw = 0 }, // 24-30 IRQ Flags for DMA0..DMA6    (Write 1 to reset) (0=None, 1=IRQ)
+        irq_line: bool = false, // 31    IRQ Signal (0-to-1 triggers 1F801070h.bit3)    (0=None, 1=IRQ) (R)
     } = .{},
+    // 1F8010F8h (usually 7FFAC68Bh? or 0BFAC688h) (changes to 7FE358D1h after DMA transfer)
+    // 1F8010FCh (usually 00FFFFF7h) (stays so even after DMA transfer) (...maybe OTC fill-value)
+    // Contains strange read-only values (but not the usual "Garbage").
     _unused: u64 = undefined,
 
     const ChannelFlagBits = packed union {
         raw: u7,
-        bits: packed struct {
-            channel0: u1,
-            channel1: u1,
-            channel2: u1,
-            channel3: u1,
-            channel4: u1,
-            channel5: u1,
-            channel6: u1,
+        bits: packed struct(u7) {
+            channel0: bool,
+            channel1: bool,
+            channel2: bool,
+            channel3: bool,
+            channel4: bool,
+            channel5: bool,
+            channel6: bool,
         },
     };
 };
@@ -206,8 +210,9 @@ pub const DMAChannel = packed struct(u128) {
     // 1F801080h+N*10h - D#_MADR - DMA base address (Channel 0..6) (R/W)
     //
     // In SyncMode=0, the hardware doesn't update the MADR registers (it will contain the start address even during and after the transfer) (unless Chopping is enabled, in that case it does update MADR, same does probably also happen when getting interrupted by a higher priority DMA channel).
-    // In SyncMode=1 and SyncMode=2, the hardware does update MADR (it will contain the start address of the currently transferred block; at transfer end, it'll hold the end-address in SyncMode=1, or the 00FFFFFFh end-code in SyncMode=2)
-    // Note: Address bit0-1 are writeable, but any updated current/end addresses are word-aligned with bit0-1 forced to zero.
+    // In SyncMode=1 and SyncMode=2, the hardware does update MADR (it will contain the start address of the currently transferred block; at transfer end, it'll hold the end-address in SyncMode=1, or the end marker in SyncMode=2)
+    // Notes: Address bits 0-1 are writeable, but any updated current/end addresses are word-aligned with bits 0-1 forced to zero.
+    // The address counter wraps around when counting down from 000000h to FFFFFCh, leading to words after wraparound not being written to RAM (as FFFFFCh is past the default 8 MB main RAM region).
     base_address: packed struct(u32) {
         offset: u24 = 0, // 0-23  Memory Address where the DMA will start reading from/writing to
         zero_b24_31: u8 = 0, //   24-31 Not used (always zero)
@@ -232,26 +237,26 @@ pub const DMAChannel = packed struct(u128) {
     } = .{ .raw = undefined }, // FIXME
     // 1F801088h+N*10h - D#_CHCR - DMA Channel Control (Channel 0..6) (R/W)
     //
-    // The Start/Trigger bit is automatically cleared upon BEGIN of the transfer, this bit needs to be set only in SyncMode=0 (setting it in other SyncModes would force the first block to be transferred instantly without DRQ, which isn't desired).
-    // The Start/Busy bit is automatically cleared upon COMPLETION of the transfer, this bit must be always set for all SyncModes when starting a transfer.
-    // For DMA6/OTC there are some restrictions, D6_CHCR has only three read/write-able bits: Bit24,28,30. All other bits are read-only: Bit1 is always 1 (step=backward), and the other bits are always 0.
+    // Bit 28 is automatically cleared upon BEGIN of the transfer, this bit needs to be set only in SyncMode=0 (setting it in other SyncModes would force the first block to be transferred instantly without DREQ, which isn't desired).
+    // Bit 24 is automatically cleared upon COMPLETION of the transfer, this bit must be always set for all SyncModes when starting a transfer.
+    // For DMA6/OTC there are some restrictions, D6_CHCR has only three read/write-able bits: 24,28,30. All other bits are read-only: bit 1 is always 1 (increment=-4), and the other bits are always 0.
     channel_control: packed struct(u32) {
         transfer_direction: enum(u1) {
             ToRAM = 0,
             FromRAM = 1,
         } = .ToRAM,
-        adress_step: enum(u1) {
+        adress_step: enum(u1) { // 1 MADR increment per step (0=+4, 1=-4)
             Inc4 = 0,
             Dec4 = 1,
         } = .Inc4,
         zero_b2_7: u6 = 0,
-        chopping_enable: u1 = 0, // 8 Chopping Enable       (0=Normal, 1=Chopping; run CPU during DMA gaps)
+        chopping_enable: u1 = 0, // 8 When 1: Burst mode: enable "chopping" (cycle stealing by CPU); Slice mode: Causes DMA to hang; Linked-list mode: Transfer header before data?
         sync_mode: enum(u2) { // 9-10 SyncMode, Transfer Synchronisation/Mode (0-3):
-            Manual = 0, //        0 Start immediately and transfer all at once (used for CDROM, OTC)
-            Request = 1, // 1 Sync blocks to DMA requests   (used for MDEC, SPU, and GPU-data)
-            LinkedList = 2, //              2 Linked-List mode              (used for GPU-command-lists)
-            Reserved = 3, //                3 Reserved                      (not used)
-        } = .Manual,
+            Burst = 0, // 0=Burst (transfer data all at once after DREQ is first asserted)
+            Slice = 1, // 1=Slice (split data into blocks, transfer next block whenever DREQ is asserted)
+            LinkedList = 2, // 2=Linked-list mode
+            Reserved = 3, // 3=Reserved
+        } = .Burst,
         zero_b11_15: u5 = 0,
         chopping_dma_window: u3 = 0, // 16-18   Chopping DMA Window Size (1 SHL N words)
         zero_b19: u1 = 0,
@@ -262,10 +267,10 @@ pub const DMAChannel = packed struct(u128) {
             StartOrEnableOrBusy = 1,
         } = .StoppedOrCompleted,
         zero_b25_27: u3 = 0,
-        start_or_trigger: u1 = 0, //   28      Start/Trigger         (0=Normal, 1=Manual Start; use for SyncMode=0)
-        unknown_rw_b29: u1 = 0, //   29      Unknown (R/W) Pause?  (0=No, 1=Pause?)     (For SyncMode=0 only?)
-        unknown_rw_b30: u1 = 0, //   30      Unknown (R/W)
-        zero_b31: u1 = 0, //   31      Not used              (always zero)
+        force_start: bool = false, // 28 Force transfer start without waiting for DREQ
+        unknown_rw_b29: u1 = 0, // 29 In forced-burst mode, pauses transfer while set. In other modes, stops bit 28 from being cleared after a slice is transferred. No effect when transfer was caused by a DREQ.
+        unknown_rw_b30: u1 = 0, // 30 Perform bus snooping (allows DMA to read from -nonexistent- cache?)
+        zero_b31: u1 = 0, // 31 Unused
     } = .{},
     _unused: u32 = undefined,
 };
