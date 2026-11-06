@@ -83,7 +83,7 @@ pub fn main(init: std.process.Init) !void {
         };
         defer exe_file.close(io);
 
-        var reader_buffer: [std.heap.page_size_min]u8 = undefined;
+        var reader_buffer: [4 * 1024 * 1024]u8 = undefined;
         var reader = exe_file.reader(io, &reader_buffer);
 
         save_state.load(&psx, &reader.interface) catch |err| {
