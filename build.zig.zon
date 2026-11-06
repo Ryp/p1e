@@ -45,8 +45,8 @@
             .hash = "N-V-__8AAAAACAA6EjMOzmN_4NRGVjzlhR2f3i2DUAq4V2uT",
         },
         .tracy = .{
-            .url = "https://github.com/wolfpld/tracy/archive/67ba5b77277d565811aae1865a5966caef7e5b96.zip",
-            .hash = "N-V-__8AAIOSKwGsrhE7fP-vBA8TPZWqr4U3MBdzjZmVwjqc",
+            .url = "https://github.com/wolfpld/tracy/archive/f2a4f2529e7e71844c9e434b877770a21ecf7587.zip",
+            .hash = "N-V-__8AABliiwINsxd0JlQwa91JejjvuOTL4S_Y6biDBTQG",
         },
         .vulkan_zig = .{
             .url = "git+https://github.com/Snektron/vulkan-zig?ref=zig-0.17-compat#1fa628fd49d89468241c2cab14bad41a312e79fc",

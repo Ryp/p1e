@@ -198,23 +198,23 @@ pub fn TracyAllocator(comptime name: ?[:0]const u8) type {
 // This function only accepts comptime-known strings, see `messageCopy` for runtime strings
 pub inline fn message(comptime msg: [:0]const u8) void {
     if (!enable) return;
-    ___tracy_emit_messageL(msg.ptr, if (enable_callstack) callstack_depth else 0);
+    ___tracy_emit_logStringL(.info, 0, if (enable_callstack) callstack_depth else 0, msg.ptr);
 }
 
 // This function only accepts comptime-known strings, see `messageColorCopy` for runtime strings
 pub inline fn messageColor(comptime msg: [:0]const u8, color: u32) void {
     if (!enable) return;
-    ___tracy_emit_messageLC(msg.ptr, color, if (enable_callstack) callstack_depth else 0);
+    ___tracy_emit_logStringL(.info, @bitCast(color), if (enable_callstack) callstack_depth else 0, msg.ptr);
 }
 
 pub inline fn messageCopy(msg: []const u8) void {
     if (!enable) return;
-    ___tracy_emit_message(msg.ptr, msg.len, if (enable_callstack) callstack_depth else 0);
+    ___tracy_emit_logString(.info, 0, if (enable_callstack) callstack_depth else 0, msg.len, msg.ptr);
 }
 
 pub inline fn messageColorCopy(msg: [:0]const u8, color: u32) void {
     if (!enable) return;
-    ___tracy_emit_messageC(msg.ptr, msg.len, color, if (enable_callstack) callstack_depth else 0);
+    ___tracy_emit_logString(.info, @bitCast(color), if (enable_callstack) callstack_depth else 0, msg.len, msg.ptr);
 }
 
 pub inline fn frameMark() void {
@@ -257,9 +257,9 @@ inline fn alloc(ptr: [*]u8, len: usize) void {
     if (!enable) return;
 
     if (enable_callstack) {
-        ___tracy_emit_memory_alloc_callstack(ptr, len, callstack_depth, 0);
+        ___tracy_emit_memory_alloc_callstack(ptr, len, callstack_depth);
     } else {
-        ___tracy_emit_memory_alloc(ptr, len, 0);
+        ___tracy_emit_memory_alloc(ptr, len);
     }
 }
 
@@ -267,9 +267,9 @@ inline fn allocNamed(ptr: [*]u8, len: usize, comptime name: [:0]const u8) void {
     if (!enable) return;
 
     if (enable_callstack) {
-        ___tracy_emit_memory_alloc_callstack_named(ptr, len, callstack_depth, 0, name.ptr);
+        ___tracy_emit_memory_alloc_callstack_named(ptr, len, callstack_depth, name.ptr);
     } else {
-        ___tracy_emit_memory_alloc_named(ptr, len, 0, name.ptr);
+        ___tracy_emit_memory_alloc_named(ptr, len, name.ptr);
     }
 }
 
@@ -277,9 +277,9 @@ inline fn free(ptr: [*]u8) void {
     if (!enable) return;
 
     if (enable_callstack) {
-        ___tracy_emit_memory_free_callstack(ptr, callstack_depth, 0);
+        ___tracy_emit_memory_free_callstack(ptr, callstack_depth);
     } else {
-        ___tracy_emit_memory_free(ptr, 0);
+        ___tracy_emit_memory_free(ptr);
     }
 }
 
@@ -287,9 +287,9 @@ inline fn freeNamed(ptr: [*]u8, comptime name: [:0]const u8) void {
     if (!enable) return;
 
     if (enable_callstack) {
-        ___tracy_emit_memory_free_callstack_named(ptr, callstack_depth, 0, name.ptr);
+        ___tracy_emit_memory_free_callstack_named(ptr, callstack_depth, name.ptr);
     } else {
-        ___tracy_emit_memory_free_named(ptr, 0, name.ptr);
+        ___tracy_emit_memory_free_named(ptr, name.ptr);
     }
 }
 
@@ -307,19 +307,27 @@ extern fn ___tracy_emit_zone_name(ctx: ___tracy_c_zone_context, txt: [*]const u8
 extern fn ___tracy_emit_zone_color(ctx: ___tracy_c_zone_context, color: u32) void;
 extern fn ___tracy_emit_zone_value(ctx: ___tracy_c_zone_context, value: u64) void;
 extern fn ___tracy_emit_zone_end(ctx: ___tracy_c_zone_context) void;
-extern fn ___tracy_emit_memory_alloc(ptr: *const anyopaque, size: usize, secure: c_int) void;
-extern fn ___tracy_emit_memory_alloc_callstack(ptr: *const anyopaque, size: usize, depth: c_int, secure: c_int) void;
-extern fn ___tracy_emit_memory_free(ptr: *const anyopaque, secure: c_int) void;
-extern fn ___tracy_emit_memory_free_callstack(ptr: *const anyopaque, depth: c_int, secure: c_int) void;
-extern fn ___tracy_emit_memory_alloc_named(ptr: *const anyopaque, size: usize, secure: c_int, name: [*:0]const u8) void;
-extern fn ___tracy_emit_memory_alloc_callstack_named(ptr: *const anyopaque, size: usize, depth: c_int, secure: c_int, name: [*:0]const u8) void;
-extern fn ___tracy_emit_memory_free_named(ptr: *const anyopaque, secure: c_int, name: [*:0]const u8) void;
-extern fn ___tracy_emit_memory_free_callstack_named(ptr: *const anyopaque, depth: c_int, secure: c_int, name: [*:0]const u8) void;
-extern fn ___tracy_emit_message(txt: [*]const u8, size: usize, callstack: c_int) void;
-extern fn ___tracy_emit_messageL(txt: [*:0]const u8, callstack: c_int) void;
-extern fn ___tracy_emit_messageC(txt: [*]const u8, size: usize, color: u32, callstack: c_int) void;
-extern fn ___tracy_emit_messageLC(txt: [*:0]const u8, color: u32, callstack: c_int) void;
+extern fn ___tracy_emit_memory_alloc(ptr: *const anyopaque, size: usize) void;
+extern fn ___tracy_emit_memory_alloc_callstack(ptr: *const anyopaque, size: usize, depth: c_int) void;
+extern fn ___tracy_emit_memory_free(ptr: *const anyopaque) void;
+extern fn ___tracy_emit_memory_free_callstack(ptr: *const anyopaque, depth: c_int) void;
+extern fn ___tracy_emit_memory_alloc_named(ptr: *const anyopaque, size: usize, name: [*:0]const u8) void;
+extern fn ___tracy_emit_memory_alloc_callstack_named(ptr: *const anyopaque, size: usize, depth: c_int, name: [*:0]const u8) void;
+extern fn ___tracy_emit_memory_free_named(ptr: *const anyopaque, name: [*:0]const u8) void;
+extern fn ___tracy_emit_memory_free_callstack_named(ptr: *const anyopaque, depth: c_int, name: [*:0]const u8) void;
+extern fn ___tracy_emit_logString(severity: MessageSeverity, color: i32, callstack_depth: c_int, size: usize, txt: [*]const u8) void;
+extern fn ___tracy_emit_logStringL(severity: MessageSeverity, color: i32, callstack_depth: c_int, txt: [*:0]const u8) void;
 extern fn ___tracy_emit_frame_mark(name: ?[*:0]const u8) void;
+
+// enum TracyMessageSeverity, passed as int8_t
+const MessageSeverity = enum(i8) {
+    trace,
+    debug,
+    info,
+    warning,
+    @"error",
+    fatal,
+};
 
 const ___tracy_source_location_data = extern struct {
     name: ?[*:0]const u8,
