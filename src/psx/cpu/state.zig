@@ -79,9 +79,7 @@ pub const Registers = struct {
         try writer.writeInt(@TypeOf(self.next_pc), self.next_pc, .little);
         try writer.writeInt(@TypeOf(self.current_instruction_pc), self.current_instruction_pc, .little);
 
-        for (self.gprs) |gpr| {
-            try writer.writeInt(u32, gpr, .little);
-        }
+        try writer.writeSliceEndian(u32, &self.gprs, .little);
 
         try writer.writeInt(@TypeOf(self.hi), self.hi, .little);
         try writer.writeInt(@TypeOf(self.lo), self.lo, .little);
@@ -103,9 +101,7 @@ pub const Registers = struct {
         self.next_pc = try reader.takeInt(@TypeOf(self.next_pc), .little);
         self.current_instruction_pc = try reader.takeInt(@TypeOf(self.current_instruction_pc), .little);
 
-        for (&self.gprs) |*gpr| {
-            gpr.* = try reader.takeInt(u32, .little);
-        }
+        try reader.readSliceEndian(u32, &self.gprs, .little);
 
         self.hi = try reader.takeInt(@TypeOf(self.hi), .little);
         self.lo = try reader.takeInt(@TypeOf(self.lo), .little);

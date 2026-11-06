@@ -3,14 +3,12 @@ pub const GTEState = struct {
     ctrl_regs: [32]u32 = undefined,
 
     pub fn write(self: @This(), writer: anytype) !void {
-        // FIXME
-        _ = self;
-        _ = writer;
+        try writer.writeSliceEndian(u32, &self.data_regs, .little);
+        try writer.writeSliceEndian(u32, &self.ctrl_regs, .little);
     }
 
     pub fn read(self: *@This(), reader: anytype) !void {
-        // FIXME
-        _ = self;
-        _ = reader;
+        try reader.readSliceEndian(u32, &self.data_regs, .little);
+        try reader.readSliceEndian(u32, &self.ctrl_regs, .little);
     }
 };
