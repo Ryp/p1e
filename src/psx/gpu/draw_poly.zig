@@ -203,9 +203,14 @@ pub fn push_poly_color(psx: *PSXState, op_code: g0.DrawPolyOpCode, vertices: []c
 // FIXME overlap of quads along the diagonal, maybe we're not correctly excluding pixels on the edge
 // FIXME handle draw offset and clipping
 fn draw_poly_triangle(psx: *PSXState, op_code: g0.DrawPolyOpCode, instance: PolyInstance, v: [3]PhatVertex) void {
-    const v1 = v[0];
+    var v1 = v[0];
     var v2 = v[1];
     var v3 = v[2];
+
+    // Apply drawing offsets
+    v1.pos += .{ psx.gpu.regs.drawing_x_offset, psx.gpu.regs.drawing_y_offset };
+    v2.pos += .{ psx.gpu.regs.drawing_x_offset, psx.gpu.regs.drawing_y_offset };
+    v3.pos += .{ psx.gpu.regs.drawing_x_offset, psx.gpu.regs.drawing_y_offset };
 
     var det_v123 = det2(v2.pos - v1.pos, v3.pos - v1.pos);
 
@@ -214,26 +219,15 @@ fn draw_poly_triangle(psx: *PSXState, op_code: g0.DrawPolyOpCode, instance: Poly
         det_v123 = -det_v123;
     }
 
-    const v_min_x = @min(v1.pos[0], @min(v2.pos[0], v3.pos[0]));
-    const v_min_y = @min(v1.pos[1], @min(v2.pos[1], v3.pos[1]));
+    const tri_min_x = @min(v1.pos[0], @min(v2.pos[0], v3.pos[0]));
+    const tri_max_x = @max(v1.pos[0], @max(v2.pos[0], v3.pos[0]));
 
-    const v_max_x = @max(v1.pos[0], @max(v2.pos[0], v3.pos[0]));
-    const v_max_y = @max(v1.pos[1], @max(v2.pos[1], v3.pos[1]));
-
-    const triangle_aabb_f32 = AABB_f32_2{
-        .min = .{ v_min_x, v_min_y },
-        .max = .{ v_max_x, v_max_y },
-    };
+    const tri_min_y = @min(v1.pos[1], @min(v2.pos[1], v3.pos[1]));
+    const tri_max_y = @max(v1.pos[1], @max(v2.pos[1], v3.pos[1]));
 
     const triangle_aabb_u32 = AABB_u32_2{
-        .min = .{
-            @intFromFloat(triangle_aabb_f32.min[0]),
-            @intFromFloat(triangle_aabb_f32.min[1]),
-        },
-        .max = .{
-            @intFromFloat(triangle_aabb_f32.max[0]),
-            @intFromFloat(triangle_aabb_f32.max[1]),
-        },
+        .min = @intFromFloat(f32_2{ tri_min_x, tri_min_y }),
+        .max = @intFromFloat(f32_2{ tri_max_x, tri_max_y }),
     };
 
     for (triangle_aabb_u32.min[1]..triangle_aabb_u32.max[1]) |y| {
