@@ -82,13 +82,20 @@ pub fn store_mmio_generic(comptime T: type, psx: *PSXState, offset: u29, value: 
                 std.mem.writeInt(T, type_slice, value, .little);
             },
             MMIO.Interrupt_Offset => {
-                const reset_irq_save = psx.mmio.dma.interrupt.reset_irq.raw;
+                const reset_irq_save = psx.mmio.dma.interrupt.irq_requested.raw;
+                const line_save = psx.mmio.dma.interrupt.irq_line;
 
                 // FIXME this might break if the type is not u32
                 std.mem.writeInt(T, type_slice, value, .little);
 
                 psx.mmio.dma.interrupt.zero_b6_14 = 0;
-                psx.mmio.dma.interrupt.reset_irq.raw = reset_irq_save & ~psx.mmio.dma.interrupt.reset_irq.raw;
+
+                // ACK interrupts
+                psx.mmio.dma.interrupt.irq_requested.raw = reset_irq_save & ~psx.mmio.dma.interrupt.irq_requested.raw;
+
+                psx.mmio.dma.interrupt.irq_line = line_save;
+
+                execution.update_dma_irq_line(psx);
             },
             else => @panic("Invalid DMA offset"),
         }

@@ -4,6 +4,7 @@ const PSXState = @import("../state.zig").PSXState;
 const bus = @import("../bus.zig");
 const config = @import("../config.zig");
 
+const cpu_execution = @import("../cpu/execution.zig");
 const gpu_execution = @import("../gpu/execution.zig");
 const cdrom_execution = @import("../cdrom/execution.zig");
 
@@ -120,6 +121,25 @@ pub fn execute_dma_transfer(psx: *PSXState, channel: *dma_mmio.DMAChannel, chann
 
     channel.channel_control.status = .StoppedOrCompleted;
     // FIXME reset more fields
+
+    const irq_mask = @as(u7, 1) << @backingInt(channel_index);
+
+    if (psx.mmio.dma.interrupt.irq_enable.raw & irq_mask != 0 and psx.mmio.dma.interrupt.irq_enable_master) {
+        psx.mmio.dma.interrupt.irq_requested.raw |= irq_mask;
+    }
+
+    update_dma_irq_line(psx);
+}
+
+pub fn update_dma_irq_line(psx: *PSXState) void {
+    const irq_line = (psx.mmio.dma.interrupt.irq_enable_master and psx.mmio.dma.interrupt.irq_requested.raw != 0) or psx.mmio.dma.interrupt.force_irq;
+
+    // Edge trigger
+    if (!psx.mmio.dma.interrupt.irq_line and irq_line) {
+        cpu_execution.request_hardware_interrupt(psx, .IRQ3_DMA);
+    }
+
+    psx.mmio.dma.interrupt.irq_line = irq_line;
 }
 
 fn get_transfer_word_count(channel: *dma_mmio.DMAChannel) u32 {
