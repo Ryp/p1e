@@ -104,6 +104,11 @@ pub fn execute(psx: *PSXState, draw_poly: g0.DrawPolyOpCode, command_bytes: []co
                 .tex_page = command_textured.tex_page,
             };
 
+            psx.mmio.gpu.GPUSTAT.texture_x_base = command_textured.tex_page.texture_x_base;
+            psx.mmio.gpu.GPUSTAT.texture_y_base = command_textured.tex_page.texture_y_base;
+            psx.mmio.gpu.GPUSTAT.texture_page_colors = command_textured.tex_page.texture_page_colors;
+            // FIXME add texture base y 2!
+
             draw_poly_generic(psx, draw_poly, instance, phat_vertices);
         } else {
             const monochrome = std.mem.bytesAsValue(g0.DrawTriangleMonochrome, command_bytes);
