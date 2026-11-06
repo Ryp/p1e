@@ -136,8 +136,6 @@ fn draw_poly_generic(psx: *PSXState, op_code: g0.DrawPolyOpCode, instance: PolyI
 
         draw_poly_triangle(psx, op_code, instance, tri_vertices.*);
     }
-
-    push_poly_color(psx, op_code, phat_vertices);
 }
 
 // FIXME normalization from viewport!
@@ -164,41 +162,6 @@ fn packed_tex_coord_to_f32_2(packed_tex_coord: g0.PackedTexCoord) f32_2 {
         packed_tex_coord.x,
         packed_tex_coord.y,
     };
-}
-
-pub fn push_poly_color(psx: *PSXState, op_code: g0.DrawPolyOpCode, vertices: []const PhatVertex) void {
-    const index_count: u32 = if (op_code.is_quad) 6 else 3;
-    const backend = &psx.gpu.backend;
-
-    backend.draw_command_buffer[backend.draw_command_offset] = .{
-        //.op_code = op_code,
-        .index_offset = backend.index_offset,
-        .index_count = index_count,
-    };
-
-    @memcpy(backend.vertex_buffer[backend.vertex_offset..][0..vertices.len], vertices);
-
-    if (op_code.is_quad) {
-        @memcpy(backend.index_buffer[backend.index_offset..][0..index_count], &[_]u32{
-            backend.vertex_offset + 0, // 1st triangle
-            backend.vertex_offset + 1,
-            backend.vertex_offset + 2,
-            backend.vertex_offset + 1, // 2nd triangle
-            backend.vertex_offset + 2,
-            backend.vertex_offset + 3,
-        });
-    } else {
-        @memcpy(backend.index_buffer[backend.index_offset..][0..3], &[_]u32{
-            backend.vertex_offset + 0,
-            backend.vertex_offset + 1,
-            backend.vertex_offset + 2,
-        });
-    }
-
-    // Update counters at the end
-    backend.vertex_offset += @intCast(vertices.len);
-    backend.index_offset += index_count;
-    backend.draw_command_offset += 1;
 }
 
 // FIXME overlap of quads along the diagonal, maybe we're not correctly excluding pixels on the edge
