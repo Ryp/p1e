@@ -175,7 +175,7 @@ pub const DrawCommand = struct {
 //   Memory Type                   Dual-ported VRAM        Normal DRAM
 //   GPUSTAT.13 when interlace=off always 0                always 1
 //   GPUSTAT.14                    always 0                reverseflag
-//   GPUSTAT.15                    always 0                texture_disable
+//   GPUSTAT.15                    always 0                TBY2 (texture page Y base 2, 2 MB VRAM only)
 //   GP1(10h:index3..4)            19bit (1MB VRAM)        20bit (2MB VRAM)
 //   GP1(10h:index7)               N/A                     00000002h version
 //   GP1(10h:index8)               mirror of index0        00000000h zero

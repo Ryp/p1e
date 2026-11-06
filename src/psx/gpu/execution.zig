@@ -273,7 +273,7 @@ fn execute_gp0_command(psx: *PSXState, op_code: g0.OpCode, command_bytes: []cons
                     psx.mmio.gpu.GPUSTAT.texture_page_colors = draw_mode.texture_page_colors;
                     psx.mmio.gpu.GPUSTAT.dither_mode = draw_mode.dither_mode;
                     psx.mmio.gpu.GPUSTAT.draw_to_display_area = draw_mode.draw_to_display_area;
-                    psx.mmio.gpu.GPUSTAT.texture_disable = draw_mode.texture_disable;
+                    psx.mmio.gpu.GPUSTAT.texture_y_base_2 = draw_mode.texture_y_base_2;
 
                     psx.gpu.regs.rectangle_texture_x_flip = draw_mode.rectangle_texture_x_flip;
                     psx.gpu.regs.rectangle_texture_y_flip = draw_mode.rectangle_texture_y_flip;
@@ -396,8 +396,8 @@ pub fn execute_gp1_command(psx: *PSXState, command_raw: g1.CommandRaw) void {
             std.debug.assert(display_mode.reverse_flag == 0);
             std.debug.assert(display_mode.zero_b8_23 == 0);
         },
-        .TextureDisableNew => |texture_disable_new| {
-            _ = texture_disable_new;
+        .SetVRAMSizeV2 => |set_vram_size_v2| {
+            _ = set_vram_size_v2;
             @panic("Unimplemented");
         },
         .GetGPUInfo => |get_gpu_info| {
@@ -406,8 +406,8 @@ pub fn execute_gp1_command(psx: *PSXState, command_raw: g1.CommandRaw) void {
             execute_get_gpu_info(psx, get_gpu_info.op_code);
         },
         .UnknownCrash => @panic("GP1 UnknownCrash command executed!"),
-        .TextureDisableOld => |texture_disable_old| {
-            std.debug.assert(texture_disable_old.unknown_b0_23 == .Enable or texture_disable_old.unknown_b0_23 == .Disable);
+        .SetVRAMSizeV1 => |set_vram_size_v1| {
+            std.debug.assert(set_vram_size_v1.unknown_b0_23 == .Enable or set_vram_size_v1.unknown_b0_23 == .Disable);
             @panic("Unimplemented");
         },
     }

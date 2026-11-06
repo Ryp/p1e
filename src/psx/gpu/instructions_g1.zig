@@ -10,10 +10,10 @@ pub const OpCode = enum(u6) {
     SetDisplayHorizontalRange = 0x06,
     SetDisplayVerticalRange = 0x07,
     SetDisplayMode = 0x08,
-    TextureDisableNew = 0x09,
+    SetVRAMSizeV2 = 0x09,
     GetGPUInfo = 0x10,
     UnknownCrash = 0x0B,
-    TextureDisableOld = 0x20,
+    SetVRAMSizeV1 = 0x20,
     _,
 };
 
@@ -75,12 +75,9 @@ const Command = union(OpCode) {
         reverse_flag: u1,
         zero_b8_23: u16,
     },
-    TextureDisableNew: packed struct(u24) {
-        texture_disable: enum(u1) {
-            Normal = 0,
-            Disable = 1,
-        },
-        unused_b1_23: u23,
+    SetVRAMSizeV2: packed struct(u24) {
+        texture_y_base_2: u1,
+        unused_b1_23: u23, // 1-23  Unknown (seems to have no effect)
     },
     GetGPUInfo: packed struct(u24) {
         op_code: GPUInfoOpCode,
@@ -89,8 +86,8 @@ const Command = union(OpCode) {
     UnknownCrash: packed struct(u24) {
         unknown_b0_23: u24,
     },
-    TextureDisableOld: packed struct(u24) {
-        unknown_b0_23: enum(u24) {
+    SetVRAMSizeV1: packed struct(u24) {
+        unknown_b0_23: enum(u24) { // 0-23  Unknown (501h=1 MB, 504h=2 MB, or so?)
             Enable = 0x501,
             Disable = 0x504,
             _,
@@ -109,10 +106,10 @@ pub fn make_command(raw: CommandRaw) Command {
         .SetDisplayHorizontalRange => .{ .SetDisplayHorizontalRange = @bitCast(raw.payload) },
         .SetDisplayVerticalRange => .{ .SetDisplayVerticalRange = @bitCast(raw.payload) },
         .SetDisplayMode => .{ .SetDisplayMode = @bitCast(raw.payload) },
-        .TextureDisableNew => .{ .TextureDisableNew = @bitCast(raw.payload) },
+        .SetVRAMSizeV2 => .{ .SetVRAMSizeV2 = @bitCast(raw.payload) },
         .GetGPUInfo => .{ .GetGPUInfo = @bitCast(raw.payload) },
         .UnknownCrash => .{ .UnknownCrash = @bitCast(raw.payload) },
-        .TextureDisableOld => .{ .TextureDisableOld = @bitCast(raw.payload) },
+        .SetVRAMSizeV1 => .{ .SetVRAMSizeV1 = @bitCast(raw.payload) },
         _ => {
             @panic("Unsupported G1 command");
         },

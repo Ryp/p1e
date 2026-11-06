@@ -50,7 +50,7 @@ pub fn execute(psx: *PSXState, draw_poly: g0.DrawPolyOpCode, command_bytes: []co
             const shaded_textured = std.mem.bytesAsValue(g0.DrawTriangleShadedTextured, command_bytes);
             _ = shaded_textured;
 
-            unreachable;
+            @panic("unsupported DrawShadedTextured poly");
         } else {
             const PackedVertexOffset = 0;
             const PackedVertexBytes = 8;
@@ -107,7 +107,8 @@ pub fn execute(psx: *PSXState, draw_poly: g0.DrawPolyOpCode, command_bytes: []co
             psx.mmio.gpu.GPUSTAT.texture_x_base = command_textured.tex_page.texture_x_base;
             psx.mmio.gpu.GPUSTAT.texture_y_base = command_textured.tex_page.texture_y_base;
             psx.mmio.gpu.GPUSTAT.texture_page_colors = command_textured.tex_page.texture_page_colors;
-            // FIXME add texture base y 2!
+            psx.mmio.gpu.GPUSTAT.semi_transparency_mode = command_textured.tex_page.semi_transparency_mode;
+            psx.mmio.gpu.GPUSTAT.texture_y_base_2 = command_textured.tex_page.texture_y_base_2;
 
             draw_poly_generic(psx, draw_poly, instance, phat_vertices);
         } else {

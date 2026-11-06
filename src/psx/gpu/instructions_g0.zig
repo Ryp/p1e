@@ -445,7 +445,7 @@ pub const PackedTexPage = packed struct(u16) {
 
     unused_b9_10: u2, // 9-10   Unused (does NOT change GP0(E1h).Bit9-10)
 
-    texture_disable: u1, // 11     Same as GP0(E1h).Bit11  (see there)
+    texture_y_base_2: u1, // 11     Same as GP0(E1h).Bit11  (see there)
 
     unused_b12_13: u2, // 12-13  Unused (does NOT change GP0(E1h).Bit12-13)
     zero_b14_15: u2, // 14-15  Unused (should be 0)
@@ -473,7 +473,7 @@ pub const SetDrawMode = packed struct(u32) {
     texture_page_colors: mmio.MMIO.Packed.TexturePageColors,
     dither_mode: u1,
     draw_to_display_area: mmio.MMIO.Packed.DrawToDisplayArea,
-    texture_disable: u1,
+    texture_y_base_2: u1,
     rectangle_texture_x_flip: u1,
     rectangle_texture_y_flip: u1,
     zero_b14_23: u10,

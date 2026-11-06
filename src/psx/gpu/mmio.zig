@@ -72,7 +72,7 @@ const MMIO_GPU = packed struct(u128) {
     // 1F801814h.Write 4   GP1 Send GP1 Commands (Display Control)
     GPUSTAT: packed struct { // Read-only
         texture_x_base: u4 = 0, // 0-3   Texture page X Base   (N*64)                              ;GP0(E1h).0-3
-        texture_y_base: u1 = 0, // 4     Texture page Y Base   (N*256) (ie. 0 or 256)              ;GP0(E1h).4
+        texture_y_base: u1 = 0, // 4     Texture page Y Base 1 (N*256) (ie. 0, 256, 512 or 768)    ;GP0(E1h).4
         semi_transparency_mode: SemiTransparency = .B_half_plus_F_half, // 5-6   Semi Transparency     (0=B/2+F/2, 1=B+F, 2=B-F, 3=B+F/4)  ;GP0(E1h).5-6
         texture_page_colors: TexturePageColors = ._4bits, // 7-8 Texture page colors   (0=4bit, 1=8bit, 2=15bit, 3=Reserved)GP0(E1h).7-8
         dither_mode: u1 = 0, // 9 Dither 24bit to 15bit (0=Off/strip LSBs, 1=Dither Enabled);GP0(E1h).9
@@ -83,7 +83,7 @@ const MMIO_GPU = packed struct(u128) {
         check_mask_before_drawing: u1 = 0, //   12    Draw Pixels           (0=Always, 1=Not to Masked areas)   ;GP0(E6h).1
         interlace_field: u1 = 0, //   13    Interlace Field       (or, always 1 when GP1(08h).5=0)
         reverse_flag: u1 = 0, //   14    "Reverseflag"         (0=Normal, 1=Distorted)             ;GP1(08h).7
-        texture_disable: u1 = 0, //   15    Texture Disable       (0=Normal, 1=Disable Textures)      ;GP0(E1h).11
+        texture_y_base_2: u1 = 0, //   15    TBY2  Texture page Y Base 2 (N*512) (only for 2 MB VRAM)        ;GP0(E1h).11
         horizontal_resolution2: u1 = 0, //   16    Horizontal Resolution 2     (0=256/320/512/640, 1=368)    ;GP1(08h).6
         horizontal_resolution1: u2 = 0, //   17-18 Horizontal Resolution 1     (0=256, 1=320, 2=512, 3=640)  ;GP1(08h).0-1
         vertical_resolution: VerticalResolution = ._240lines, //   19    Vertical Resolution         (0=240, 1=480, when Bit22=1)  ;GP1(08h).2
