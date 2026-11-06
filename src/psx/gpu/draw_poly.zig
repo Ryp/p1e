@@ -6,6 +6,7 @@ const state = @import("state.zig");
 const PhatVertex = state.PhatVertex;
 const f32_2 = state.f32_2;
 const f32_3 = state.f32_3;
+const i32_2 = @Vector(2, i32);
 
 const g0 = @import("instructions_g0.zig");
 const mmio = @import("mmio.zig");
@@ -201,7 +202,6 @@ pub fn push_poly_color(psx: *PSXState, op_code: g0.DrawPolyOpCode, vertices: []c
 }
 
 // FIXME overlap of quads along the diagonal, maybe we're not correctly excluding pixels on the edge
-// FIXME handle draw offset and clipping
 fn draw_poly_triangle(psx: *PSXState, op_code: g0.DrawPolyOpCode, instance: PolyInstance, v: [3]PhatVertex) void {
     var v1 = v[0];
     var v2 = v[1];
@@ -225,13 +225,31 @@ fn draw_poly_triangle(psx: *PSXState, op_code: g0.DrawPolyOpCode, instance: Poly
     const tri_min_y = @min(v1.pos[1], @min(v2.pos[1], v3.pos[1]));
     const tri_max_y = @max(v1.pos[1], @max(v2.pos[1], v3.pos[1]));
 
-    const triangle_aabb_u32 = AABB_u32_2{
-        .min = @intFromFloat(f32_2{ tri_min_x, tri_min_y }),
-        .max = @intFromFloat(f32_2{ tri_max_x, tri_max_y }),
+    // Clip to drawing area
+    const draw_aabb = AABB_u32_2{
+        .min = @intCast(@max(i32_2{
+            @intFromFloat(tri_min_x),
+            @intFromFloat(tri_min_y),
+        }, i32_2{
+            psx.gpu.regs.drawing_area_left,
+            psx.gpu.regs.drawing_area_top,
+        })),
+        .max = @intCast(@min(i32_2{
+            @intFromFloat(tri_max_x),
+            @intFromFloat(tri_max_y),
+        }, i32_2{
+            psx.gpu.regs.drawing_area_right,
+            psx.gpu.regs.drawing_area_bottom,
+        })),
     };
 
-    for (triangle_aabb_u32.min[1]..triangle_aabb_u32.max[1]) |y| {
-        for (triangle_aabb_u32.min[0]..triangle_aabb_u32.max[0]) |x| {
+    // Clipping can flip the AABB
+    if (draw_aabb.min[0] > draw_aabb.max[0] or draw_aabb.min[1] > draw_aabb.max[1]) {
+        return;
+    }
+
+    for (draw_aabb.min[1]..draw_aabb.max[1]) |y| {
+        for (draw_aabb.min[0]..draw_aabb.max[0]) |x| {
             const pos: f32_2 = .{
                 @floatFromInt(x),
                 @floatFromInt(y),

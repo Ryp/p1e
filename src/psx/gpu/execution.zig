@@ -302,8 +302,8 @@ fn execute_gp0_command(psx: *PSXState, op_code: g0.OpCode, command_bytes: []cons
                     const drawing_area = std.mem.bytesAsValue(g0.SetDrawingAreaBottomRight, command_bytes);
 
                     // Values are inclusive, so let's just offset them here to make life easier
-                    psx.gpu.regs.drawing_area_right = @as(u32, drawing_area.right) + 1;
-                    psx.gpu.regs.drawing_area_bottom = @as(u32, drawing_area.bottom) + 1;
+                    psx.gpu.regs.drawing_area_right = @as(u16, drawing_area.right) + 1;
+                    psx.gpu.regs.drawing_area_bottom = @as(u16, drawing_area.bottom) + 1;
 
                     std.debug.assert(drawing_area.zero_b20_23 == 0);
                 },

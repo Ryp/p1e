@@ -13,6 +13,11 @@ const PackedRGB5A1 = pixel_format.PackedRGB5A1;
 const u32_2 = @Vector(2, u32);
 const i32_2 = @Vector(2, i32);
 
+const AABB_u32_2 = struct {
+    min: u32_2,
+    max: u32_2,
+};
+
 pub fn execute(psx: *PSXState, draw_rect: g0.DrawRectOpCode, command_bytes: []const u8) void {
     if (config.enable_gpu_debug) {
         std.debug.print("DrawRect: {}\n", .{draw_rect});
@@ -57,17 +62,24 @@ fn draw_rectangle_textured(psx: *PSXState, offset: g0.PackedVertexPos, size: g0.
     const bottom_right = top_left + i32_2{ size.x, size.y };
 
     // Clip to drawing area
-    const clipped_top_left: u32_2 = @intCast(@max(top_left, i32_2{
-        @intCast(psx.gpu.regs.drawing_area_left),
-        @intCast(psx.gpu.regs.drawing_area_top),
-    }));
-    const clipped_bottom_right: u32_2 = @intCast(@min(bottom_right, i32_2{
-        @intCast(psx.gpu.regs.drawing_area_right),
-        @intCast(psx.gpu.regs.drawing_area_bottom),
-    }));
+    const draw_aabb = AABB_u32_2{
+        .min = @intCast(@max(top_left, i32_2{
+            psx.gpu.regs.drawing_area_left,
+            psx.gpu.regs.drawing_area_top,
+        })),
+        .max = @intCast(@min(bottom_right, i32_2{
+            psx.gpu.regs.drawing_area_right,
+            psx.gpu.regs.drawing_area_bottom,
+        })),
+    };
 
-    for (clipped_top_left[1]..clipped_bottom_right[1]) |y| {
-        for (clipped_top_left[0]..clipped_bottom_right[0]) |x| {
+    // Clipping can flip the AABB
+    if (draw_aabb.min[0] > draw_aabb.max[0] or draw_aabb.min[1] > draw_aabb.max[1]) {
+        return;
+    }
+
+    for (draw_aabb.min[1]..draw_aabb.max[1]) |y| {
+        for (draw_aabb.min[0]..draw_aabb.max[0]) |x| {
             const texcoords = i32_2{ @intCast(x), @intCast(y) } - top_left;
 
             var output: pixel_format.PackedRGB5A1 = undefined;
