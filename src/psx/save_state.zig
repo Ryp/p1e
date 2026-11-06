@@ -17,7 +17,7 @@ const Header = packed struct(u64) {
 };
 
 // FIXME handle errors properly
-pub fn save(psx: psx_state.PSXState, writer: *std.Io.Writer) !void {
+pub fn save(psx: *const psx_state.PSXState, writer: *std.Io.Writer) !void {
     const header: Header = .{};
 
     try writer.writeStruct(header, .little);
@@ -58,7 +58,7 @@ test "State serialization" {
 
     var writer: std.Io.Writer = .fixed(&buffer);
 
-    try save(psx, &writer);
+    try save(&psx, &writer);
 
     var psx_2 = try psx_state.create_state(bios, allocator);
     defer psx_state.destroy_state(&psx_2, allocator);
