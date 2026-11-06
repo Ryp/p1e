@@ -91,7 +91,7 @@ const MMIO_GPU = packed struct(u128) {
         display_area_color_depth: DisplayAreaColorDepth = ._15bits, //   21    Display Area Color Depth    (0=15bit, 1=24bit)            ;GP1(08h).4
         vertical_interlace: bool = true, //   22    Vertical Interlace          (0=Off, 1=On)                 ;GP1(08h).5
         display_enabled: DisplayState = .Disabled, //   23    Display Enable              (0=Enabled, 1=Disabled)       ;GP1(03h).0
-        interrupt_request: u1 = 0, //   24    Interrupt Request (IRQ1)    (0=Off, 1=IRQ)       ;GP0(1Fh)/GP1(02h)
+        interrupt_requested: bool = false, //   24    Interrupt Request (IRQ1)    (0=Off, 1=IRQ)       ;GP0(1Fh)/GP1(02h)
         dma_data_request_mode: u1 = 0, //   25    DMA / Data Request, meaning depends on GP1(04h) DMA Direction:
         // When GP1(04h)=0 ---> Always zero (0)
         // When GP1(04h)=1 ---> FIFO State  (0=Full, 1=Not Full)
