@@ -154,7 +154,7 @@ fn execute_instruction(psx: *PSXState, instruction: instructions.Instruction) vo
         .mtlo => |i| execute_mtlo(psx, i),
         .rfe => execute_rfe(psx),
         .cop1 => execute_cop1(psx),
-        .cop2 => execute_cop2(psx),
+        .cop2 => |i| gte.execute_cop(psx, i),
         .cop3 => execute_cop3(psx),
         .mult => |i| execute_mult(psx, i),
         .multu => |i| execute_multu(psx, i),
@@ -976,12 +976,6 @@ fn execute_cop1(psx: *PSXState) void {
     execute_delayed_load(psx);
 
     execute_exception(psx, .CpU);
-}
-
-fn execute_cop2(psx: *PSXState) void {
-    _ = psx;
-
-    @panic("cop2 not implemented");
 }
 
 fn execute_cop3(psx: *PSXState) void {

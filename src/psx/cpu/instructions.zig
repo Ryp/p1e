@@ -1,6 +1,7 @@
 const std = @import("std");
 
 const cpu = @import("state.zig");
+const gte = @import("../gte/instructions.zig");
 
 // Opcode/Parameter Encoding
 //
@@ -94,7 +95,7 @@ pub const Instruction = union(enum) {
     bcn: bcn,
     rfe,
     cop1,
-    cop2,
+    cop2: gte.GTECommand,
     cop3,
     addi: addi,
     addiu: addiu,
@@ -176,7 +177,7 @@ pub fn decode_instruction(op_u32: u32) Instruction {
         .ORI => .{ .ori = decode_generic_rs_rt_imm_u16(op_u32) },
         .XORI => .{ .xori = decode_generic_rs_rt_imm_u16(op_u32) },
         .LUI => .{ .lui = decode_generic_rt_imm_u16(op_u32) },
-        .COP0, .COP1, .COP2, .COP3 => decode_cop_instruction(@bitCast(op_u32)),
+        .COP0, .COP1, .COP2, .COP3 => decode_cop_instruction(op_u32),
         .LB => .{ .lb = decode_generic_rs_rt_imm_i16(op_u32) },
         .LH => .{ .lh = decode_generic_rs_rt_imm_i16(op_u32) },
         .LWL => .{ .lwl = decode_generic_rs_rt_imm_i16(op_u32) },
@@ -313,7 +314,9 @@ const RawCopInstruction = packed struct(u32) {
     b28_31: u4,
 };
 
-fn decode_cop_instruction(op_cop: RawCopInstruction) Instruction {
+fn decode_cop_instruction(op_u32: u32) Instruction {
+    const op_cop: RawCopInstruction = @bitCast(op_u32);
+
     if (op_cop.b25 == 0) {
         // Generic ops for all coprocessors
         const op_copn: CopN_OpCode = @fromBackingInt(op_cop.b21_24);
@@ -343,7 +346,7 @@ fn decode_cop_instruction(op_cop: RawCopInstruction) Instruction {
         switch (op_cop.cop_index) {
             0 => return decode_cop0_instruction(op_cop),
             1 => return .{ .cop1 = undefined },
-            2 => return decode_cop2_instruction(op_cop),
+            2 => return .{ .cop2 = @bitCast(@as(u25, @truncate(op_u32))) },
             3 => return .{ .cop3 = undefined },
         }
     }
@@ -362,11 +365,6 @@ fn decode_cop0_instruction(op_cop: RawCopInstruction) Instruction {
     } else {
         return .{ .invalid = undefined };
     }
-}
-
-fn decode_cop2_instruction(op_cop: RawCopInstruction) Instruction {
-    _ = op_cop; // FIXME
-    return .{ .cop2 = undefined };
 }
 
 const CopN_OpCode = enum(u4) {

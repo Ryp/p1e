@@ -10,79 +10,9 @@ pub const GTEState = struct {
     pub fn read(self: *@This(), reader: anytype) !void {
         self.regs = try reader.takeStruct(@TypeOf(self.regs), .little);
     }
-
-    pub fn load_data_reg(self: *@This(), register: GTERegisters.DataName) u32 {
-        std.debug.print("GTE data load {}\n", .{register});
-
-        return switch (register) {
-            .cop2r15 => @panic("Unimplemented"),
-            .cop2r28, .cop2r29 => @panic("Unimplemented"),
-            else => self.regs.data.raw[@backingInt(register)],
-        };
-    }
-
-    // We don't truncate when registers only have 16 bit values.
-    // Just make sure the unused bits don't get read.
-    pub fn store_data_reg(self: *@This(), register: GTERegisters.DataName, value: u32) void {
-        std.debug.print("GTE data store {} with {x}\n", .{ register, value });
-
-        switch (register) {
-            .cop2r15 => @panic("Unimplemented"),
-            .cop2r28 => @panic("Unimplemented"),
-            .cop2r29 => @panic("Unimplemented"),
-            .cop2r31 => @panic("Unimplemented"),
-            else => self.regs.data.raw[@backingInt(register)] = value,
-        }
-    }
-
-    pub fn load_ctrl_reg(self: *@This(), register: GTERegisters.CtrlName) u32 {
-        std.debug.print("GTE ctrl load {}\n", .{register});
-
-        _ = self;
-
-        return switch (register) {
-            else => @panic("Unimplemented"),
-            // else => self.regs.ctrl.raw[@backingInt(register)],
-        };
-    }
-
-    // We don't truncate when registers only have 16 bit values.
-    // Just make sure the unused bits don't get read.
-    pub fn store_ctrl_reg(self: *@This(), register: GTERegisters.CtrlName, value: u32) void {
-        std.debug.print("GTE ctrl store {} with {x}\n", .{ register, value });
-
-        switch (register) {
-            .FLAG => self.regs.ctrl.raw[@backingInt(register)] = value & 0x7f_ff_00_00,
-            else => self.regs.ctrl.raw[@backingInt(register)] = value,
-        }
-    }
 };
 
-pub const f16_s1e3m12 = packed struct(u16) {
-    mantissa: u12,
-    exponent: u3,
-    sign: u1,
-};
-
-pub const f16_s1e7m8 = packed struct(u16) {
-    mantissa: u8,
-    exponent: u7,
-    sign: u1,
-};
-
-pub const f32_s1e15m16 = packed struct(u32) {
-    mantissa: u16,
-    exponent: u15,
-    sign: u1,
-};
-
-pub const f32_s1e7m24 = packed struct(u32) {
-    mantissa: u24,
-    exponent: u7,
-    sign: u1,
-};
-
-const GTERegisters = extern struct {
+pub const GTERegisters = extern struct {
     pub const DataName = enum(u5) {
         VX0_VY0, // cop2r0
         VZ0, // cop2r1
@@ -351,22 +281,22 @@ const GTERegisters = extern struct {
             // The DQA value is only 16bit (1bit sign, 7bit integer, 8bit fraction).
             // The DQB value is 32bit (1bit sign, 7bit integer, 24bit? fraction).
             // Used only for RTPS/RTPT commands.
-            OFX: f32_s1e15m16, // cop2r56
-            OFY: f32_s1e15m16, // cop2r57
+            OFX: i32_q15f16, // cop2r56
+            OFY: i32_q15f16, // cop2r57
             H: u16, // cop2r58
             _cop2r58_b32_63: u16,
-            DQA: f16_s1e7m8, // cop2r59
+            DQA: i16_q7f8, // cop2r59
             _cop2r59_b32_63: u16,
-            DQB: f32_s1e7m24, // cop2r60
+            DQB: i32_q7f24, // cop2r60
             // Average Z Registers (ZSF3/ZSF4=Input, R/W) (OTZ=Result, R)
             //
             //   cop2r61 (cnt29) ZSF3 |  0|ZSF3 1,3,12| Z3 average scale factor (normally 1/3)
             //   cop2r62 (cnt30) ZSF4 |  0|ZSF4 1,3,12| Z4 average scale factor (normally 1/4)
             //
             // Used only for AVSZ3/AVSZ4 commands.
-            ZSF3: f16_s1e3m12, // cop2r61
+            ZSF3: i16_q3f12, // cop2r61
             _cop2r61_b32_63: u16,
-            ZSF4: f16_s1e3m12, // cop2r62
+            ZSF4: i16_q3f12, // cop2r62
             _cop2r62_b32_63: u16,
             // cop2r63 (cnt31) - FLAG - Returns any calculation errors.
             //
@@ -375,29 +305,28 @@ const GTERegisters = extern struct {
             //
             // Maths overflows are indicated in FLAG register. In most cases, the result is saturated to MIN/MAX values (except MAC0,MAC1,MAC2,MAC3 which aren't saturated). For IR1,IR2,IR3 many commands allow to select the MIN value via "lm" bit of the GTE opcode (though for RTPS/RTPT, only the IR3 saturation flag (FLAG.22) always acts as if lm=0; the stored values of IR1, IR2, and IR3 all respect the lm bit).
             // cop2r63 (cnt31) - FLAG - Returns any calculation errors.
-            // Not used 11 0 IR0 saturated to +0000h..+1000h 12 SY2 saturated to -0400h..+03FFh 13 SX2 saturated to -0400h..+03FFh 14 MAC0 Result larger than 31 bits and negative 15 MAC0 Result larger than 31 bits and positive 16 Divide overflow. RTPS/RTPT division... 17 SZ3 or OTZ saturated to +0000h..+FFFFh 18 Color-FIFO-B saturated to +00h..+FFh 19 Color-FIFO-G saturated to +00h..+FFh 20 Color-FIFO-R saturated to +00h..+FFh 21 IR3 saturated to +0000h..+7FFFh (lm=1)... 22 IR2 saturated to +0000h..+7FFFh (lm=1)... 23 IR1 saturated to +0000h..+7FFFh (lm=1)... 24 MAC3 Result larger than 43 bits and negative 25 MAC2 Result larger than 43 bits and negative 26 MAC1 Result larger than 43 bits and negative 27 MAC3 Result larger than 43 bits and positive 28 MAC2 Result larger than 43 bits and positive 29 MAC1 Result larger than 43 bits and positive 30 Error Flag 31
             //
-            //   31   Error Flag (Bit30..23, and 18..13 ORed together) (Read only)
-            //   30   MAC1 Result larger than 43 bits and positive
-            //   29   MAC2 Result larger than 43 bits and positive
-            //   28   MAC3 Result larger than 43 bits and positive
-            //   27   MAC1 Result larger than 43 bits and negative
-            //   26   MAC2 Result larger than 43 bits and negative
-            //   25   MAC3 Result larger than 43 bits and negative
-            //   24   IR1 saturated to +0000h..+7FFFh (lm=1) or to -8000h..+7FFFh (lm=0)
-            //   23   IR2 saturated to +0000h..+7FFFh (lm=1) or to -8000h..+7FFFh (lm=0)
-            //   22   IR3 saturated to +0000h..+7FFFh (lm=1) or to -8000h..+7FFFh (lm=0)
-            //   21   Color-FIFO-R saturated to +00h..+FFh
-            //   20   Color-FIFO-G saturated to +00h..+FFh
-            //   19   Color-FIFO-B saturated to +00h..+FFh
-            //   18   SZ3 or OTZ saturated to +0000h..+FFFFh
-            //   17   Divide overflow. RTPS/RTPT division result saturated to max=1FFFFh
-            //   16   MAC0 Result larger than 31 bits and positive
-            //   15   MAC0 Result larger than 31 bits and negative
-            //   14   SX2 saturated to -0400h..+03FFh
-            //   13   SY2 saturated to -0400h..+03FFh
-            //   12   IR0 saturated to +0000h..+1000h
             //   0-11 Not used (always zero) (Read only)
+            //   12   IR0 saturated to +0000h..+1000h
+            //   13   SY2 saturated to -0400h..+03FFh
+            //   14   SX2 saturated to -0400h..+03FFh
+            //   15   MAC0 Result larger than 31 bits and negative
+            //   16   MAC0 Result larger than 31 bits and positive
+            //   17   Divide overflow. RTPS/RTPT division result saturated to max=1FFFFh
+            //   18   SZ3 or OTZ saturated to +0000h..+FFFFh
+            //   19   Color-FIFO-B saturated to +00h..+FFh
+            //   20   Color-FIFO-G saturated to +00h..+FFh
+            //   21   Color-FIFO-R saturated to +00h..+FFh
+            //   22   IR3 saturated to +0000h..+7FFFh (lm=1) or to -8000h..+7FFFh (lm=0)
+            //   23   IR2 saturated to +0000h..+7FFFh (lm=1) or to -8000h..+7FFFh (lm=0)
+            //   24   IR1 saturated to +0000h..+7FFFh (lm=1) or to -8000h..+7FFFh (lm=0)
+            //   25   MAC3 Result larger than 43 bits and negative
+            //   26   MAC2 Result larger than 43 bits and negative
+            //   27   MAC1 Result larger than 43 bits and negative
+            //   28   MAC3 Result larger than 43 bits and positive
+            //   29   MAC2 Result larger than 43 bits and positive
+            //   30   MAC1 Result larger than 43 bits and positive
+            //   31   Error Flag (Bit30..23, and 18..13 ORed together) (Read only)
             //
             // Bit30-12 are read/write-able, ie. they can be set/reset by software, however, that's normally not required - all bits are automatically reset at the begin of a new GTE command.
             // Bit31 is apparently intended for RTPS/RTPT commands, since it triggers only on flags that are affected by these two commands, but even for that commands it's totally useless since one could as well check if FLAG is nonzero.
@@ -412,3 +341,27 @@ const GTERegisters = extern struct {
 comptime {
     std.debug.assert(@sizeOf(GTERegisters) == @sizeOf(u32) * 64);
 }
+
+pub const i16_q3f12 = packed struct(u16) {
+    pub const Shift = 12;
+
+    value: i16,
+};
+
+pub const i16_q7f8 = packed struct(u16) {
+    pub const Shift = 8;
+
+    value: i16,
+};
+
+pub const i32_q15f16 = packed struct(u32) {
+    pub const Shift = 16;
+
+    value: i32,
+};
+
+pub const i32_q7f24 = packed struct(u32) {
+    pub const Shift = 24;
+
+    value: i32,
+};
