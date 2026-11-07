@@ -1,4 +1,4 @@
-pub fn flat_texel_offset(x: usize, y: usize) usize {
+pub inline fn flat_texel_offset(x: usize, y: usize) usize {
     return x + y * TexelStrideY;
 }
 

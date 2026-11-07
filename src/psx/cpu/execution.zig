@@ -211,15 +211,15 @@ fn execute_instruction(psx: *PSXState, instruction: instructions.Instruction) vo
     }
 }
 
-fn load_reg(registers: *const Registers, register_name: cpu.RegisterName) u32 {
+inline fn load_reg(registers: *const Registers, register_name: cpu.RegisterName) u32 {
     return load_reg_generic(u32, registers, register_name);
 }
 
-fn load_reg_signed(registers: *const Registers, register_name: cpu.RegisterName) i32 {
+inline fn load_reg_signed(registers: *const Registers, register_name: cpu.RegisterName) i32 {
     return load_reg_generic(i32, registers, register_name);
 }
 
-fn load_reg_generic(load_type: type, registers: *const Registers, register_name: cpu.RegisterName) load_type {
+inline fn load_reg_generic(load_type: type, registers: *const Registers, register_name: cpu.RegisterName) load_type {
     const value = if (register_name == .zero) 0 else registers.gprs[@backingInt(register_name)];
 
     if (config.enable_debug_print) {
@@ -229,15 +229,15 @@ fn load_reg_generic(load_type: type, registers: *const Registers, register_name:
     return @bitCast(value);
 }
 
-fn store_reg(registers: *Registers, register_name: cpu.RegisterName, value: u32) void {
+inline fn store_reg(registers: *Registers, register_name: cpu.RegisterName, value: u32) void {
     store_reg_generic(registers, register_name, value);
 }
 
-fn store_reg_signed(registers: *Registers, register_name: cpu.RegisterName, value: i32) void {
+inline fn store_reg_signed(registers: *Registers, register_name: cpu.RegisterName, value: i32) void {
     store_reg_generic(registers, register_name, value);
 }
 
-fn store_reg_generic(registers: *Registers, register_name: cpu.RegisterName, value: anytype) void {
+inline fn store_reg_generic(registers: *Registers, register_name: cpu.RegisterName, value: anytype) void {
     if (config.enable_debug_print) {
         std.debug.print("reg store 0x{x:0>8} in {}\n", .{ value, register_name });
     }
@@ -1023,7 +1023,7 @@ fn execute_reserved_instruction(psx: *PSXState) void {
 // Most instructions need to execute this BEFORE writing to a register to that they can take precendence.
 // Most instruction also need to execute this AFTER reading to a register to get the correct value.
 // NOTE Currently the later condition is not needed because we double-buffer register values, but maybe we actually shouldn't for perf.
-fn execute_delayed_load(psx: *PSXState) void {
+inline fn execute_delayed_load(psx: *PSXState) void {
     if (psx.cpu.pending_load) |pending_load| {
         store_reg(&psx.cpu.regs, pending_load.register, pending_load.value);
         psx.cpu.pending_load = null;
@@ -1123,7 +1123,7 @@ fn execute_interrupt_stack_pop(psx: *PSXState) void {
     // NOTE: We don't touch the `old` field here
 }
 
-fn wrapping_add_u32_i32(lhs: u32, rhs: i32) u32 {
+inline fn wrapping_add_u32_i32(lhs: u32, rhs: i32) u32 {
     // NOTE: using two's-complement to ignore signedness
     return lhs +% @as(u32, @bitCast(rhs));
 }
