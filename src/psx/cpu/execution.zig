@@ -991,11 +991,21 @@ fn execute_cop3(psx: *PSXState) void {
 }
 
 fn execute_lwc(psx: *PSXState, instruction: instructions.lwc) void {
-    execute_delayed_load(psx); // FIXME
-
     if (instruction.cop_index == 2) {
-        @panic("lwc2 not implemented");
+        const address_base = load_reg(&psx.cpu.regs, instruction.rs);
+        const address = wrapping_add_u32_i32(address_base, instruction.imm_i16);
+
+        execute_delayed_load(psx);
+
+        if (address % 4 == 0) {
+            const value = bus.load_u32(psx, address);
+
+            gte.execute_lwc(psx, instruction.rt_cop, value);
+        } else {
+            execute_exception_bad_address(psx, .AdEL, address);
+        }
     } else {
+        execute_delayed_load(psx);
         execute_exception(psx, .CpU);
     }
 }

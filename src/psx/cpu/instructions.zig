@@ -302,7 +302,7 @@ const SecondaryOpCode = enum(u6) {
 //   010000 |1|0000| N/A  | N/A  | N/A  | 001000 | COP0 08h  ;=TLBP   ;/
 //   010000 |1|0000| N/A  | N/A  | N/A  | 010000 | COP0 10h  ;=RFE
 
-const RawCopInstruction = packed struct {
+const RawCopInstruction = packed struct(u32) {
     b0_5: u6,
     b6_10: u5,
     b11_15: u5,
@@ -596,7 +596,7 @@ pub const bcn = generic_cop_bc;
 //   -------+------+------+------+------+--------+------------
 //   1100nn | rs   | rt   | <--immediate16bit--> | LWCn rt_dat,[rs+imm]
 //   1110nn | rs   | rt   | <--immediate16bit--> | SWCn rt_dat,[rs+imm]
-const RawCopLoadStoreInstruction = packed struct {
+const RawCopLoadStoreInstruction = packed struct(u32) {
     imm_i16: i16,
     rt_cop: u5,
     rs: u5,
