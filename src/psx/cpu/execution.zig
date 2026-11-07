@@ -847,19 +847,17 @@ fn execute_lw_unaligned(psx: *PSXState, instruction: instructions.lwl, direction
     }
 
     const result = switch (direction) {
-        .Left => switch (address % 4) {
+        .Left => switch (@as(u2, @truncate(address))) {
             0 => previous_value & 0x00_ff_ff_ff | load_value << 24,
             1 => previous_value & 0x00_00_ff_ff | load_value << 16,
             2 => previous_value & 0x00_00_00_ff | load_value << 8,
             3 => previous_value & 0x00_00_00_00 | load_value << 0,
-            else => unreachable,
         },
-        .Right => switch (address % 4) {
+        .Right => switch (@as(u2, @truncate(address))) {
             0 => previous_value & 0x00_00_00_00 | load_value >> 0,
             1 => previous_value & 0xff_00_00_00 | load_value >> 8,
             2 => previous_value & 0xff_ff_00_00 | load_value >> 16,
             3 => previous_value & 0xff_ff_ff_00 | load_value >> 24,
-            else => unreachable,
         },
     };
 
@@ -925,19 +923,17 @@ fn execute_sw_unaligned(psx: *PSXState, instruction: instructions.swl, direction
     const previous_value = bus.load_u32(psx, address_aligned);
 
     const result = switch (direction) {
-        .Left => switch (address % 4) {
+        .Left => switch (@as(u2, @truncate(address))) {
             0 => previous_value & 0xff_ff_ff_00 | value >> 24,
             1 => previous_value & 0xff_ff_00_00 | value >> 16,
             2 => previous_value & 0xff_00_00_00 | value >> 8,
             3 => previous_value & 0x00_00_00_00 | value >> 0,
-            else => unreachable,
         },
-        .Right => switch (address % 4) {
+        .Right => switch (@as(u2, @truncate(address))) {
             0 => previous_value & 0x00_00_00_00 | value << 0,
             1 => previous_value & 0x00_00_00_ff | value << 8,
             2 => previous_value & 0x00_00_ff_ff | value << 16,
             3 => previous_value & 0x00_ff_ff_ff | value << 24,
-            else => unreachable,
         },
     };
 
