@@ -1,7 +1,7 @@
 pub const GTECommand = packed struct(u25) {
     opcode: RealOpCode, // 0-5    Real GTE Command Number (00h..3Fh) (used by hardware)
     zero_b6_9: u4, // 6-9 Always zero                        (ignored by hardware)
-    saturate_ir: bool, // 10     lm - Saturate IR1,IR2,IR3 result (0=To -8000h..+7FFFh, 1=To 0..+7FFFh)
+    lm: bool, // 10     lm - Saturate IR1,IR2,IR3 result (0=To -8000h..+7FFFh, 1=To 0..+7FFFh)
     zero_b11_12: u2, // 11-12  Always zero                        (ignored by hardware)
     // 13-14  MVMVA Translation Vector (0=TR, 1=BK, 2=FC/Bugged, 3=None)
     mvmva_translation: enum(u2) {
@@ -24,7 +24,7 @@ pub const GTECommand = packed struct(u25) {
         Color,
         Reserved,
     },
-    shift_fraction: bool, // 19 sf - Shift Fraction in IR registers (0=No fraction, 1=12bit fraction)
+    sf: bool, // 19 sf - Shift Fraction in IR registers (0=No fraction, 1=12bit fraction)
     //  20-24  Fake GTE Command Number (00h..1Fh) (ignored by hardware)
     fake_opcode: u5,
 };
