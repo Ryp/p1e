@@ -28,6 +28,8 @@ pub fn step_1k_times(psx: *PSXState, io: std.Io) void {
 
     cdrom.execute_ticks(psx, ticks);
     gpu.execute_ticks(psx, ticks);
+
+    // std.debug.print("Step = {}\n", .{psx.step_index});
 }
 
 fn step(psx: *PSXState, io: std.Io) void {
