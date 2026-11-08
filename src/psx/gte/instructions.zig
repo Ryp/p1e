@@ -24,7 +24,7 @@ pub const GTECommand = packed struct(u25) {
         Color,
         Reserved,
     },
-    shift_fraction: bool, // 19 sf - Shift Fraction in IR registers (0=No fraction, 1=12bit fraction)
+    sf: bool, // 19 sf - Shift Fraction in IR registers (0=No fraction, 1=12bit fraction)
     //  20-24  Fake GTE Command Number (00h..1Fh) (ignored by hardware)
     fake_opcode: u5,
 };

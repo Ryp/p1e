@@ -95,7 +95,7 @@ pub const Instruction = union(enum) {
     bcn: bcn,
     rfe,
     cop1,
-    cop2: gte.GTECommand,
+    cop2: cop2,
     cop3,
     addi: addi,
     addiu: addiu,
@@ -588,6 +588,7 @@ pub const generic_cop_bc = struct {
 };
 
 pub const bcn = generic_cop_bc;
+pub const cop2 = gte.GTECommand;
 
 //   31..26 |25..21|20..16|15..11|10..6 |  5..0  |
 //    6bit  | 5bit | 5bit | 5bit | 5bit |  6bit  |

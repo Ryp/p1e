@@ -156,7 +156,7 @@ fn execute_instruction(psx: *PSXState, instruction: instructions.Instruction) vo
         .mtlo => |i| execute_mtlo(psx, i),
         .rfe => execute_rfe(psx),
         .cop1 => execute_cop1(psx),
-        .cop2 => |i| gte.execute_cop(psx, i),
+        .cop2 => |i| execute_cop2(psx, i),
         .cop3 => execute_cop3(psx),
         .mult => |i| execute_mult(psx, i),
         .multu => |i| execute_multu(psx, i),
@@ -610,21 +610,33 @@ fn execute_mfc(psx: *PSXState, instruction: instructions.mtc) void {
 
             execute_chained_delay_load(psx, instruction.cpu_rs, value);
         },
-        .cop2 => @panic("mfc2 not implemented"),
         .cop1 => @panic("mfc1 is not valid"),
+        .cop2 => |register_index| {
+            const value = gte.load_data_reg(&psx.gte.regs, @fromBackingInt(register_index));
+
+            execute_chained_delay_load(psx, instruction.cpu_rs, value);
+        },
         .cop3 => @panic("mfc3 is not valid"),
     }
 }
 
 fn execute_cfc(psx: *PSXState, instruction: instructions.cfc) void {
-    _ = psx;
-    _ = instruction;
+    switch (instruction.target) {
+        .cop0 => @panic("cfc0 not implemented"),
+        .cop1 => @panic("cfc1 is not valid"),
+        .cop2 => |register_index| {
+            const value = gte.load_ctrl_reg(&psx.gte.regs, @fromBackingInt(register_index));
 
-    @panic("cfc not implemented");
+            execute_chained_delay_load(psx, instruction.cpu_rs, value);
+        },
+        .cop3 => @panic("cfc3 is not valid"),
+    }
 }
 
 fn execute_mtc(psx: *PSXState, instruction: instructions.mtc) void {
     const value = load_reg(&psx.cpu.regs, instruction.cpu_rs);
+
+    execute_delayed_load(psx);
 
     switch (instruction.target) {
         .cop0 => |cop0_target| {
@@ -654,8 +666,10 @@ fn execute_mtc(psx: *PSXState, instruction: instructions.mtc) void {
                 },
             }
         },
-        .cop2 => @panic("mtc2 not implemented"),
         .cop1 => @panic("mtc1 is not valid"),
+        .cop2 => |register_index| {
+            gte.store_data_reg(&psx.gte.regs, @fromBackingInt(register_index), value);
+        },
         .cop3 => @panic("mtc3 is not valid"),
     }
 }
@@ -663,12 +677,14 @@ fn execute_mtc(psx: *PSXState, instruction: instructions.mtc) void {
 fn execute_ctc(psx: *PSXState, instruction: instructions.ctc) void {
     const value = load_reg(&psx.cpu.regs, instruction.cpu_rs);
 
+    execute_delayed_load(psx);
+
     switch (instruction.target) {
         .cop0 => @panic("ctc0 not implemented"),
-        .cop2 => |register_index| {
-            gte.execute_ctc(psx, register_index, value);
-        },
         .cop1 => @panic("ctc1 is not valid"),
+        .cop2 => |register_index| {
+            gte.store_ctrl_reg(&psx.gte.regs, @fromBackingInt(register_index), value);
+        },
         .cop3 => @panic("ctc3 is not valid"),
     }
 }
@@ -980,6 +996,12 @@ fn execute_cop1(psx: *PSXState) void {
     execute_exception(psx, .CpU);
 }
 
+fn execute_cop2(psx: *PSXState, instruction: instructions.cop2) void {
+    execute_delayed_load(psx);
+
+    gte.execute(psx, instruction);
+}
+
 fn execute_cop3(psx: *PSXState) void {
     execute_delayed_load(psx);
 
@@ -996,7 +1018,7 @@ fn execute_lwc(psx: *PSXState, instruction: instructions.lwc) void {
         if (address % 4 == 0) {
             const value = bus.load_u32(psx, address);
 
-            gte.execute_lwc(psx, instruction.rt_cop, value);
+            gte.store_data_reg(&psx.gte.regs, @fromBackingInt(instruction.rt_cop), value);
         } else {
             execute_exception_bad_address(psx, .AdEL, address);
         }
@@ -1007,11 +1029,21 @@ fn execute_lwc(psx: *PSXState, instruction: instructions.lwc) void {
 }
 
 fn execute_swc(psx: *PSXState, instruction: instructions.swc) void {
-    execute_delayed_load(psx); // FIXME
-
     if (instruction.cop_index == 2) {
-        @panic("swc2 not implemented");
+        const value = gte.load_data_reg(&psx.gte.regs, @fromBackingInt(instruction.rt_cop));
+
+        const address_base = load_reg(&psx.cpu.regs, instruction.rs);
+        const address = wrapping_add_u32_i32(address_base, instruction.imm_i16);
+
+        execute_delayed_load(psx);
+
+        if (address % 4 == 0) {
+            bus.store_u32(psx, address, value);
+        } else {
+            execute_exception_bad_address(psx, .AdES, address);
+        }
     } else {
+        execute_delayed_load(psx);
         execute_exception(psx, .CpU);
     }
 }
