@@ -8,7 +8,7 @@ const bus = @import("bus.zig");
 
 pub const DefaultSideLoadingPC = 0x80030000;
 
-const Header = packed struct(u448) {
+const Header = extern struct {
     magic: Magic, // 000h-007h ASCII ID "PS-X EXE"
     zero: u64, //  008h-00Fh Zerofilled
     pc: u32, //  010h      Initial PC                   (usually 80010000h, or higher)
@@ -22,6 +22,10 @@ const Header = packed struct(u448) {
     sp_fp_base: u32, //  030h      Initial SP/R29 & FP/R30 Base (usually 801FFFF0h) (or 0=None)
     sp_fp_offset: u32, //  034h      Initial SP/R29 & FP/R30 Offs (usually 0, added to above Base)
 };
+
+comptime {
+    std.debug.assert(@sizeOf(Header) == 56);
+}
 
 const BinaryOffset = 0x800;
 

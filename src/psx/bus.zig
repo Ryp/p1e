@@ -39,7 +39,7 @@ pub fn store_u32(psx: *PSXState, address: u32, value: u32) void {
     store_generic(u32, psx, @bitCast(address), value);
 }
 
-pub const Address = packed struct {
+pub const Address = packed struct(u32) {
     offset: u29,
     mapping: enum(u3) {
         Useg = 0b000,
