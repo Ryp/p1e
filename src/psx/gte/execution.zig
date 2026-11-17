@@ -110,10 +110,10 @@ pub fn execute(psx: *PSXState, instruction: instructions.GTECommand) void {
     typed_regs.FLAG = @bitCast(@as(u32, 0));
 
     switch (instruction.opcode) {
-        .RTPS => execute_rtps(typed_regs, instruction),
+        .RTPS, @fromBackingInt(0x00) => execute_rtps(typed_regs, instruction),
         .RTPT => execute_rtpt(typed_regs, instruction),
         .MVMVA => execute_mvmva(typed_regs, instruction),
-        .DCPL => execute_dcpl(typed_regs, instruction),
+        .DCPL, @fromBackingInt(0x1A) => execute_dcpl(typed_regs, instruction),
         .DPCS => execute_dpcs(typed_regs, instruction),
         .DPCT => execute_dpct(typed_regs, instruction),
         .INTPL => execute_intpl(typed_regs, instruction),
