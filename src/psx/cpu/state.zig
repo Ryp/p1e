@@ -237,11 +237,16 @@ const SystemRegister = packed struct(u32) {
     //             (The bit doesn't exist in PSX ?)
     reverse_endianness: u1,
     // 26-27 -   Not used (zero)
-    // 28    CU0 COP0 Enable (0=Enable only in Kernal Mode, 1=Kernal and User Mode)
-    // 29    CU1 COP1 Enable (0=Disable, 1=Enable) (none such in PSX)
-    // 30    CU2 COP2 Enable (0=Disable, 1=Enable) (GTE in PSX)
-    // 31    CU3 COP3 Enable (0=Disable, 1=Enable) (none such in PSX)
-    _unused_b26_31: u6,
+    _unused_b26_27: u2,
+    // 28 CU0 COP0 Enable (0=Enable only in Kernal Mode, 1=Kernal and User Mode)
+    // 29 CU1 COP1 Enable (0=Disable, 1=Enable) (none such in PSX)
+    // 30 CU2 COP2 Enable (0=Disable, 1=Enable) (GTE in PSX)
+    // 31 CU3 COP3 Enable (0=Disable, 1=Enable) (none such in PSX)
+    enable_cop_mask: u4,
+
+    pub fn enable_cop(self: @This(), cop_index: u2) bool {
+        return self.enable_cop_mask & (@as(u4, 1) << cop_index) != 0;
+    }
 };
 
 const CauseRegister = packed struct(u32) {
@@ -264,7 +269,7 @@ const CauseRegister = packed struct(u32) {
     // 16-27 -      Not used (zero)
     zero_b16_27: u12 = 0,
     // 28-29 CE     Opcode Bit26-27 (aka coprocessor number in case of COP opcodes)
-    op_code_b26_27: u2,
+    cop_index: u2,
     // 30    -      Not used (zero) / Undoc: When BD=1, Branch condition (0=False)
     branch_taken: bool,
     // 31    BD     Branch Delay (set when last exception points to the branch

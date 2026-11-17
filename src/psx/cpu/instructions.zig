@@ -94,6 +94,7 @@ pub const Instruction = union(enum) {
     ctc: ctc,
     bcn: bcn,
     rfe,
+    cop0,
     cop1,
     cop2: cop2,
     cop3,
@@ -360,10 +361,10 @@ fn decode_cop0_instruction(op_cop: RawCopInstruction) Instruction {
             0b000110 => .{ .invalid = undefined }, // TLBWR
             0b001000 => .{ .invalid = undefined }, // TLBP
             0b010000 => .{ .rfe = undefined },
-            else => .{ .invalid = undefined },
+            else => .{ .cop0 = undefined },
         };
     } else {
-        return .{ .invalid = undefined };
+        return .{ .cop0 = undefined };
     }
 }
 
@@ -385,11 +386,11 @@ fn decode_cop_register_name(cop_index: u2, register_index: u5) CopRegisterName {
     };
 }
 
-const CopRegisterName = union(enum) {
-    cop0: Cop0RegisterName,
-    cop1,
-    cop2: Cop2RegisterIndex,
-    cop3,
+const CopRegisterName = union(enum(u2)) {
+    cop0: Cop0RegisterName = 0,
+    cop1 = 1,
+    cop2: Cop2RegisterIndex = 2,
+    cop3 = 3,
 };
 
 const Cop0RegisterName = enum(u5) {

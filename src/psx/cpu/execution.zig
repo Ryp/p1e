@@ -117,7 +117,7 @@ fn step(psx: *PSXState, io: std.Io) void {
     psx.cpu.next_branch_delay_slot = .Inactive;
 
     if (psx.cpu.regs.current_instruction_pc % 4 != 0) {
-        execute_exception_bad_address(psx, .AdEL, psx.cpu.regs.current_instruction_pc);
+        execute_exception_bad_address(psx, .AdEL, psx.cpu.regs.current_instruction_pc, 0);
         return;
     }
 
@@ -128,7 +128,7 @@ fn step(psx: *PSXState, io: std.Io) void {
     if ((psx.cpu.regs.sr.interrupt_stack.current.enabled) and (@as(u3, @bitCast(psx.cpu.regs.cause.interrupt_pending)) & psx.cpu.regs.sr.interrupt_mask) != 0) {
         execute_delayed_load(psx);
 
-        execute_exception(psx, .INT);
+        execute_exception(psx, .INT, 0);
     } else {
         if (config.enable_debug_print) {
             debug.print_instruction_with_pc_decorations(instruction, op_code, psx.cpu.regs.current_instruction_pc);
@@ -155,9 +155,10 @@ fn execute_instruction(psx: *PSXState, instruction: instructions.Instruction) vo
         .mflo => |i| execute_mflo(psx, i),
         .mtlo => |i| execute_mtlo(psx, i),
         .rfe => execute_rfe(psx),
-        .cop1 => execute_cop1(psx),
+        .cop0 => execute_cop(psx, 0),
+        .cop1 => execute_cop(psx, 1),
         .cop2 => |i| execute_cop2(psx, i),
-        .cop3 => execute_cop3(psx),
+        .cop3 => execute_cop(psx, 3),
         .mult => |i| execute_mult(psx, i),
         .multu => |i| execute_multu(psx, i),
         .div => |i| execute_div(psx, i),
@@ -334,11 +335,11 @@ fn execute_jalr(psx: *PSXState, instruction: instructions.jalr) void {
 }
 
 fn execute_syscall(psx: *PSXState) void {
-    execute_exception(psx, .SysCall);
+    execute_exception(psx, .SysCall, 0);
 }
 
 fn execute_break(psx: *PSXState) void {
-    execute_exception(psx, .BP);
+    execute_exception(psx, .BP, 0);
 }
 
 fn execute_mult(psx: *PSXState, instruction: instructions.mult) void {
@@ -411,7 +412,7 @@ fn execute_add(psx: *PSXState, instruction: instructions.add) void {
     execute_delayed_load(psx);
 
     if (overflow == 1) {
-        execute_exception(psx, .Ov);
+        execute_exception(psx, .Ov, 0);
     } else {
         store_reg_signed(&psx.cpu.regs, instruction.rd, result);
     }
@@ -437,7 +438,7 @@ fn execute_sub(psx: *PSXState, instruction: instructions.sub) void {
     execute_delayed_load(psx);
 
     if (overflow == 1) {
-        execute_exception(psx, .Ov);
+        execute_exception(psx, .Ov, 0);
     } else {
         store_reg_signed(&psx.cpu.regs, instruction.rd, result);
     }
@@ -611,13 +612,22 @@ fn execute_mfc(psx: *PSXState, instruction: instructions.mtc) void {
             execute_chained_delay_load(psx, instruction.cpu_rs, value);
         },
         .cop2 => |register_index| {
-            const value = gte.load_data_reg(&psx.gte.regs, @fromBackingInt(register_index));
-
-            execute_chained_delay_load(psx, instruction.cpu_rs, value);
+            if (psx.cpu.regs.sr.enable_cop(@backingInt(instruction.target))) {
+                const value = gte.load_data_reg(&psx.gte.regs, @fromBackingInt(register_index));
+                execute_chained_delay_load(psx, instruction.cpu_rs, value);
+            } else {
+                execute_delayed_load(psx);
+                execute_exception(psx, .CpU, @backingInt(instruction.target));
+            }
         },
         .cop1, .cop3 => {
             execute_delayed_load(psx);
-            execute_exception(psx, .CpU);
+
+            if (psx.cpu.regs.sr.enable_cop(@backingInt(instruction.target))) {
+                // noop
+            } else {
+                execute_exception(psx, .CpU, @backingInt(instruction.target));
+            }
         },
     }
 }
@@ -626,13 +636,23 @@ fn execute_cfc(psx: *PSXState, instruction: instructions.cfc) void {
     switch (instruction.target) {
         .cop0 => @panic("cfc0 not implemented"),
         .cop2 => |register_index| {
-            const value = gte.load_ctrl_reg(&psx.gte.regs, @fromBackingInt(register_index));
+            if (psx.cpu.regs.sr.enable_cop(@backingInt(instruction.target))) {
+                const value = gte.load_ctrl_reg(&psx.gte.regs, @fromBackingInt(register_index));
 
-            execute_chained_delay_load(psx, instruction.cpu_rs, value);
+                execute_chained_delay_load(psx, instruction.cpu_rs, value);
+            } else {
+                execute_delayed_load(psx);
+                execute_exception(psx, .CpU, @backingInt(instruction.target));
+            }
         },
         .cop1, .cop3 => {
             execute_delayed_load(psx);
-            execute_exception(psx, .CpU);
+
+            if (psx.cpu.regs.sr.enable_cop(@backingInt(instruction.target))) {
+                // noop
+            } else {
+                execute_exception(psx, .CpU, @backingInt(instruction.target));
+            }
         },
     }
 }
@@ -671,10 +691,18 @@ fn execute_mtc(psx: *PSXState, instruction: instructions.mtc) void {
             }
         },
         .cop2 => |register_index| {
-            gte.store_data_reg(&psx.gte.regs, @fromBackingInt(register_index), value);
+            if (psx.cpu.regs.sr.enable_cop(@backingInt(instruction.target))) {
+                gte.store_data_reg(&psx.gte.regs, @fromBackingInt(register_index), value);
+            } else {
+                execute_exception(psx, .CpU, @backingInt(instruction.target));
+            }
         },
         .cop1, .cop3 => {
-            execute_exception(psx, .CpU);
+            if (psx.cpu.regs.sr.enable_cop(@backingInt(instruction.target))) {
+                // noop
+            } else {
+                execute_exception(psx, .CpU, @backingInt(instruction.target));
+            }
         },
     }
 }
@@ -687,10 +715,18 @@ fn execute_ctc(psx: *PSXState, instruction: instructions.ctc) void {
     switch (instruction.target) {
         .cop0 => @panic("ctc0 not implemented"),
         .cop2 => |register_index| {
-            gte.store_ctrl_reg(&psx.gte.regs, @fromBackingInt(register_index), value);
+            if (psx.cpu.regs.sr.enable_cop(@backingInt(instruction.target))) {
+                gte.store_ctrl_reg(&psx.gte.regs, @fromBackingInt(register_index), value);
+            } else {
+                execute_exception(psx, .CpU, @backingInt(instruction.target));
+            }
         },
         .cop1, .cop3 => {
-            execute_exception(psx, .CpU);
+            if (psx.cpu.regs.sr.enable_cop(@backingInt(instruction.target))) {
+                // noop
+            } else {
+                execute_exception(psx, .CpU, @backingInt(instruction.target));
+            }
         },
     }
 }
@@ -711,7 +747,7 @@ fn execute_addi(psx: *PSXState, instruction: instructions.addi) void {
     execute_delayed_load(psx);
 
     if (overflow == 1) {
-        execute_exception(psx, .Ov);
+        execute_exception(psx, .Ov, 0);
     } else {
         store_reg_signed(&psx.cpu.regs, instruction.rt, result);
     }
@@ -810,7 +846,7 @@ fn execute_lh(psx: *PSXState, instruction: instructions.lh) void {
         execute_chained_delay_load(psx, instruction.rt, @bitCast(value_sign_extended));
     } else {
         execute_delayed_load(psx);
-        execute_exception_bad_address(psx, .AdEL, address);
+        execute_exception_bad_address(psx, .AdEL, address, 0);
     }
 }
 
@@ -824,7 +860,7 @@ fn execute_lhu(psx: *PSXState, instruction: instructions.lhu) void {
         execute_chained_delay_load(psx, instruction.rt, value);
     } else {
         execute_delayed_load(psx);
-        execute_exception_bad_address(psx, .AdEL, address);
+        execute_exception_bad_address(psx, .AdEL, address, 0);
     }
 }
 
@@ -838,7 +874,7 @@ fn execute_lw(psx: *PSXState, instruction: instructions.lw) void {
         execute_chained_delay_load(psx, instruction.rt, value);
     } else {
         execute_delayed_load(psx);
-        execute_exception_bad_address(psx, .AdEL, address);
+        execute_exception_bad_address(psx, .AdEL, address, 0);
     }
 }
 
@@ -910,7 +946,7 @@ fn execute_sh(psx: *PSXState, instruction: instructions.sh) void {
     if (address % 2 == 0) {
         bus.store_u16(psx, address, @truncate(value));
     } else {
-        execute_exception_bad_address(psx, .AdES, address);
+        execute_exception_bad_address(psx, .AdES, address, 0);
     }
 }
 
@@ -925,7 +961,7 @@ fn execute_sw(psx: *PSXState, instruction: instructions.sw) void {
     if (address % 4 == 0) {
         bus.store_u32(psx, address, value);
     } else {
-        execute_exception_bad_address(psx, .AdES, address);
+        execute_exception_bad_address(psx, .AdES, address, 0);
     }
 }
 
@@ -996,68 +1032,80 @@ fn execute_rfe(psx: *PSXState) void {
     execute_interrupt_stack_pop(psx);
 }
 
-fn execute_cop1(psx: *PSXState) void {
+fn execute_cop(psx: *PSXState, cop_index: u2) void {
     execute_delayed_load(psx);
 
-    execute_exception(psx, .CpU);
+    if (psx.cpu.regs.sr.enable_cop(cop_index)) {
+        // noop
+    } else {
+        execute_exception(psx, .CpU, cop_index);
+    }
 }
 
 fn execute_cop2(psx: *PSXState, instruction: instructions.cop2) void {
     execute_delayed_load(psx);
 
-    gte.execute(psx, instruction);
-}
+    const cop_index = 2;
 
-fn execute_cop3(psx: *PSXState) void {
-    execute_delayed_load(psx);
-
-    execute_exception(psx, .CpU);
+    if (psx.cpu.regs.sr.enable_cop(cop_index)) {
+        gte.execute(psx, instruction);
+    } else {
+        execute_exception(psx, .CpU, cop_index);
+    }
 }
 
 fn execute_lwc(psx: *PSXState, instruction: instructions.lwc) void {
-    if (instruction.cop_index == 2) {
-        const address_base = load_reg(&psx.cpu.regs, instruction.rs);
-        const address = wrapping_add_u32_i32(address_base, instruction.imm_i16);
+    if (psx.cpu.regs.sr.enable_cop(instruction.cop_index)) {
+        if (instruction.cop_index == 2) {
+            const address_base = load_reg(&psx.cpu.regs, instruction.rs);
+            const address = wrapping_add_u32_i32(address_base, instruction.imm_i16);
 
-        execute_delayed_load(psx);
+            execute_delayed_load(psx);
 
-        if (address % 4 == 0) {
-            const value = bus.load_u32(psx, address);
+            if (address % 4 == 0) {
+                const value = bus.load_u32(psx, address);
 
-            gte.store_data_reg(&psx.gte.regs, @fromBackingInt(instruction.rt_cop), value);
+                gte.store_data_reg(&psx.gte.regs, @fromBackingInt(instruction.rt_cop), value);
+            } else {
+                execute_exception_bad_address(psx, .AdEL, address, instruction.cop_index);
+            }
         } else {
-            execute_exception_bad_address(psx, .AdEL, address);
+            // noop
         }
     } else {
         execute_delayed_load(psx);
-        execute_exception(psx, .CpU);
+        execute_exception(psx, .CpU, instruction.cop_index);
     }
 }
 
 fn execute_swc(psx: *PSXState, instruction: instructions.swc) void {
-    if (instruction.cop_index == 2) {
-        const value = gte.load_data_reg(&psx.gte.regs, @fromBackingInt(instruction.rt_cop));
+    if (psx.cpu.regs.sr.enable_cop(instruction.cop_index)) {
+        if (instruction.cop_index == 2) {
+            const value = gte.load_data_reg(&psx.gte.regs, @fromBackingInt(instruction.rt_cop));
 
-        const address_base = load_reg(&psx.cpu.regs, instruction.rs);
-        const address = wrapping_add_u32_i32(address_base, instruction.imm_i16);
+            const address_base = load_reg(&psx.cpu.regs, instruction.rs);
+            const address = wrapping_add_u32_i32(address_base, instruction.imm_i16);
 
-        execute_delayed_load(psx);
+            execute_delayed_load(psx);
 
-        if (address % 4 == 0) {
-            bus.store_u32(psx, address, value);
+            if (address % 4 == 0) {
+                bus.store_u32(psx, address, value);
+            } else {
+                execute_exception_bad_address(psx, .AdES, address, instruction.cop_index);
+            }
         } else {
-            execute_exception_bad_address(psx, .AdES, address);
+            // noop
         }
     } else {
         execute_delayed_load(psx);
-        execute_exception(psx, .CpU);
+        execute_exception(psx, .CpU, instruction.cop_index);
     }
 }
 
 fn execute_reserved_instruction(psx: *PSXState) void {
     execute_delayed_load(psx);
 
-    execute_exception(psx, .RI);
+    execute_exception(psx, .RI, 0);
 }
 
 // Most instructions need to execute this BEFORE writing to a register to that they can take precendence.
@@ -1115,21 +1163,18 @@ pub fn request_hardware_interrupt(psx: *PSXState, interrupt: HardwareInterruptTy
     update_hardware_interrupt_line(psx);
 }
 
-fn execute_exception_bad_address(psx: *PSXState, cause: cpu.ExceptionCause, address: u32) void {
+fn execute_exception_bad_address(psx: *PSXState, cause: cpu.ExceptionCause, address: u32, cop_index: u2) void {
     std.debug.assert(cause == .AdES or cause == .AdEL);
     psx.cpu.regs.bad_vaddr = address;
 
-    execute_exception(psx, cause);
+    execute_exception(psx, cause, cop_index);
 }
 
-fn execute_exception(psx: *PSXState, cause: cpu.ExceptionCause) void {
-    // About op_code_b26_27:
-    // I'm choosing to ignore this for now, as it only matters for COPn instructions, but the real HW sets that for any instruction.
-    // This seems wasteful, so I'm keeping it simple.
+fn execute_exception(psx: *PSXState, cause: cpu.ExceptionCause, cop_index: u2) void {
     psx.cpu.regs.cause = .{
         .cause = cause,
         .interrupt_pending = psx.cpu.regs.cause.interrupt_pending, // Keep that
-        .op_code_b26_27 = 0,
+        .cop_index = cop_index,
         .branch_taken = psx.cpu.branch_delay_slot == .BranchTaken,
         .branch_delay = psx.cpu.branch_delay_slot != .Inactive,
     };

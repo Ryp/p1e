@@ -23,6 +23,7 @@ pub fn print_instruction(instruction: instructions.Instruction) void {
         .mflo => |i| print_generic_rd("mflo", i),
         .mtlo => |i| print_generic_rs("mtlo", i),
         .rfe => std.debug.print("rfe\n", .{}),
+        .cop0 => std.debug.print("cop0\n", .{}),
         .cop1 => std.debug.print("cop1\n", .{}),
         .cop2 => std.debug.print("cop2_gte_fixme\n", .{}), // FIXME implement
         .cop3 => std.debug.print("cop3\n", .{}),
