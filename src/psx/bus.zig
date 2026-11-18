@@ -67,8 +67,8 @@ fn load_generic(comptime T: type, psx: *PSXState, address: Address) T {
     switch (address.mapping) {
         .Useg, .Kseg0, .Kseg1 => {
             switch (address.offset) {
-                RAM_Offset...RAM_OffsetEnd - 1 => |offset| {
-                    const local_offset = offset - RAM_Offset;
+                RAM_Offset...RAM_MirrorOffsetEnd - 1 => |offset| {
+                    const local_offset = (offset - RAM_Offset) & RAM_MirrorMask;
                     const type_slice = psx.ram[local_offset..][0..type_bytes];
                     return std.mem.readInt(T, type_slice, .little);
                 },
@@ -181,8 +181,8 @@ fn store_generic(comptime T: type, psx: *PSXState, address: Address, value: T) v
     switch (address.mapping) {
         .Useg, .Kseg0, .Kseg1 => {
             switch (address.offset) {
-                RAM_Offset...RAM_OffsetEnd - 1 => |offset| {
-                    const local_offset = offset - RAM_Offset;
+                RAM_Offset...RAM_MirrorOffsetEnd - 1 => |offset| {
+                    const local_offset = (offset - RAM_Offset) & RAM_MirrorMask;
                     const type_slice = psx.ram[local_offset..];
                     std.mem.writeInt(T, type_slice[0..type_bytes], value, .little);
                 },
@@ -266,7 +266,8 @@ fn store_generic(comptime T: type, psx: *PSXState, address: Address, value: T) v
 // 0x00000000 0x80000000 0xa0000000 2048K Main RAM
 pub const RAM_SizeBytes = 2 * 1024 * 1024;
 pub const RAM_Offset = 0x00000000;
-pub const RAM_OffsetEnd = RAM_Offset + RAM_SizeBytes;
+pub const RAM_MirrorOffsetEnd = RAM_Offset + RAM_SizeBytes * 4;
+pub const RAM_MirrorMask = RAM_SizeBytes - 1;
 
 // 0x1f000000 0x9f000000 0xbf000000 8192K Expansion Region 1
 const Expansion_SizeBytes = 8 * 1024 * 1024;
